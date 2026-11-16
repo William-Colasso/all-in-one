@@ -1,9 +1,10 @@
 import { ItemView, Plugin, PluginSettingTab, Setting, type WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import App from "./ui/App.svelte";
-import { t } from "./i18n";
+import { isPt, t } from "./i18n";
 import { TaskStore } from "./store";
 import { HabitStore } from "./habits/store";
+import { FinanceStore } from "./finance/store";
 
 const VIEW_TYPE = "all-in-one-hub";
 
@@ -12,6 +13,10 @@ interface Settings {
   tasksFile: string;
   habitsFile: string;
   habitsFolder: string;
+  financeFile: string;
+  financeFolder: string;
+  /** ISO 4217 code used to format amounts. */
+  currency: string;
 }
 
 class HubView extends ItemView {
@@ -44,6 +49,7 @@ export default class AllInOnePlugin extends Plugin {
   settings!: Settings;
   tasks!: TaskStore;
   habits!: HabitStore;
+  finance!: FinanceStore;
 
   async onload() {
     // File names are localized once, on first run, then kept so switching language never orphans data.
@@ -53,6 +59,9 @@ export default class AllInOnePlugin extends Plugin {
         tasksFile: `${t("file.tasks")}.md`,
         habitsFile: `${t("file.habits")}.md`,
         habitsFolder: t("file.habits"),
+        financeFile: `${t("file.finance")}.md`,
+        financeFolder: t("file.finance"),
+        currency: isPt() ? "BRL" : "USD",
       },
       await this.loadData(),
     );
@@ -65,9 +74,15 @@ export default class AllInOnePlugin extends Plugin {
       () => `${root()}/${this.settings.habitsFile}`,
       () => `${root()}/${this.settings.habitsFolder}`,
     );
+    this.finance = new FinanceStore(
+      this.app,
+      () => `${root()}/${this.settings.financeFile}`,
+      () => `${root()}/${this.settings.financeFolder}`,
+    );
     const reload = (path: string) => {
       if (this.tasks.isTasksFile(path)) void this.tasks.load();
       if (this.habits.owns(path)) void this.habits.load();
+      if (this.finance.owns(path)) void this.finance.load();
     };
     this.registerEvent(this.app.vault.on("modify", (f) => reload(f.path)));
     this.registerEvent(this.app.vault.on("delete", (f) => reload(f.path)));
@@ -85,7 +100,7 @@ export default class AllInOnePlugin extends Plugin {
   }
 
   loadAll() {
-    return Promise.all([this.tasks.load(), this.habits.load()]);
+    return Promise.all([this.tasks.load(), this.habits.load(), this.finance.load()]);
   }
 
   async openHub() {
@@ -117,6 +132,18 @@ class SettingsTab extends PluginSettingTab {
           this.plugin.settings.rootFolder = v.trim().replace(/^\/+|\/+$/g, "") || t("file.root");
           await this.plugin.saveData(this.plugin.settings);
           await this.plugin.loadAll();
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName(t("settings.currency"))
+      .setDesc(t("settings.currency.desc"))
+      .addText((text) =>
+        text.setValue(this.plugin.settings.currency).onChange(async (v) => {
+          const code = v.trim().toUpperCase();
+          if (!/^[A-Z]{3}$/.test(code)) return;
+          this.plugin.settings.currency = code;
+          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.finance.load(); // re-emit so open views reformat
         }),
       );
   }

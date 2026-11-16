@@ -4,7 +4,7 @@ import type { Doc, Task, TaskRef } from "../types";
 import { isPt, t } from "../i18n";
 import { compareTasks, listTasks, todayISO } from "../tasks/parse";
 
-const locale = () => (isPt() ? "pt-BR" : "en");
+export const locale = () => (isPt() ? "pt-BR" : "en");
 
 /** Local Date for an ISO day (new Date("YYYY-MM-DD") would be UTC midnight). */
 const toDate = (iso: string) => {

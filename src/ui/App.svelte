@@ -2,8 +2,13 @@
   import type AllInOnePlugin from "../main";
   import type { TaskRef } from "../types";
   import type { Habit } from "../habits/types";
+  import type { Bill, Category, TxRef } from "../finance/types";
   import { type Key, t } from "../i18n";
   import { todayISO } from "../tasks/parse";
+  import BillForm from "./BillForm.svelte";
+  import CategoryForm from "./CategoryForm.svelte";
+  import FinanceManage from "./FinanceManage.svelte";
+  import Finances from "./Finances.svelte";
   import Icon from "./Icon.svelte";
   import HabitDetail from "./HabitDetail.svelte";
   import HabitForm from "./HabitForm.svelte";
@@ -12,6 +17,7 @@
   import TaskForm from "./TaskForm.svelte";
   import Tasks from "./Tasks.svelte";
   import Today from "./Today.svelte";
+  import TxForm from "./TxForm.svelte";
 
   let { plugin }: { plugin: AllInOnePlugin } = $props();
 
@@ -25,7 +31,6 @@
     { id: "more", icon: "more-horizontal", key: "tab.more" },
   ];
   const SOON_TYPES: Item[] = [
-    { icon: "wallet", key: "type.expense" },
     { icon: "calendar", key: "type.appointment" },
     { icon: "list", key: "type.listItem" },
   ];
@@ -37,6 +42,7 @@
 
   const tasks = $derived(plugin.tasks);
   const habits = $derived(plugin.habits);
+  const finance = $derived(plugin.finance);
   let tab = $state<Tab>("today");
   let filter = $state<string | null>(null); // list filter of the Tasks tab, also the default list for new tasks there
   let sheet = $state.raw<
@@ -44,6 +50,10 @@
     | { kind: "task"; ref: TaskRef | null }
     | { kind: "habit"; habit: Habit | null }
     | { kind: "detail"; name: string; date: string }
+    | { kind: "tx"; ref: TxRef | null }
+    | { kind: "manage" }
+    | { kind: "category"; category: Category | null }
+    | { kind: "bill"; bill: Bill | null }
     | null
   >(null);
 
@@ -57,28 +67,43 @@
   const edit = (ref: TaskRef) => (sheet = { kind: "task", ref });
   const openHabit = (name: string, date: string) => (sheet = { kind: "detail", name, date });
   const newHabit = () => (sheet = { kind: "habit", habit: null });
+  const editTx = (ref: TxRef | null) => (sheet = { kind: "tx", ref });
+  const manage = () => (sheet = { kind: "manage" });
   const close = () => (sheet = null);
-  const title = $derived(
-    sheet?.kind === "task"
-      ? t(sheet.ref ? "form.edit" : "form.new")
-      : sheet?.kind === "habit"
-        ? t(sheet.habit ? "habit.edit" : "habit.new")
-        : sheet?.kind === "detail"
-          ? sheet.name
-          : t("add.title"),
-  );
+  const title = $derived.by(() => {
+    switch (sheet?.kind) {
+      case "task":
+        return t(sheet.ref ? "form.edit" : "form.new");
+      case "habit":
+        return t(sheet.habit ? "habit.edit" : "habit.new");
+      case "detail":
+        return sheet.name;
+      case "tx":
+        return t(sheet.ref ? "fin.editTx" : "fin.newTx");
+      case "manage":
+        return t("fin.manage");
+      case "category":
+        return t(sheet.category ? "fin.editCategory" : "fin.newCategory");
+      case "bill":
+        return t(sheet.bill ? "fin.editBill" : "fin.newBill");
+      default:
+        return t("add.title");
+    }
+  });
 </script>
 
 <div class="aio-main">
   <div class="aio-page">
     <div class="aio-col">
       {#if tab === "today"}
-        <Today {plugin} doc={$tasks} habits={$habits} {today} onedit={edit} onhabit={openHabit} />
+        <Today {plugin} doc={$tasks} habits={$habits} finance={$finance} {today} onedit={edit} onhabit={openHabit} />
       {:else if tab === "tasks"}
         <Tasks {plugin} doc={$tasks} {today} onedit={edit} bind:list={filter} />
       {:else if tab === "habits"}
         <Habits {plugin} data={$habits} {today} onopen={openHabit} oncreate={newHabit} />
-      {:else if tab === "more"}
+      {:else if tab === "finances"}
+        <Finances {plugin} data={$finance} {today} onedit={editTx} oncreate={() => editTx(null)} onmanage={manage} />
+      {:else}
         <ul class="aio-menu">
           {#each SOON_MORE as item (item.key)}
             <li>
@@ -93,11 +118,6 @@
             </button>
           </li>
         </ul>
-      {:else}
-        <div class="aio-empty">
-          <Icon name="wallet" size={48} />
-          <p>{t("soon.finances")}</p>
-        </div>
       {/if}
     </div>
   </div>
@@ -129,6 +149,11 @@
             <Icon name="repeat" size={22} /><span class="name">{t("type.habit")}</span><Icon name="chevron-right" />
           </button>
         </li>
+        <li>
+          <button class="aio-item" onclick={() => editTx(null)}>
+            <Icon name="wallet" size={22} /><span class="name">{t("type.expense")}</span><Icon name="chevron-right" />
+          </button>
+        </li>
         {#each SOON_TYPES as item (item.key)}
           <li>
             <button class="aio-item" disabled>
@@ -153,6 +178,19 @@
           onclose={close}
         />
       {/if}
+    {:else if sheet.kind === "tx"}
+      <TxForm {plugin} data={$finance} {today} ref={sheet.ref} onclose={close} />
+    {:else if sheet.kind === "manage"}
+      <FinanceManage
+        data={$finance}
+        currency={plugin.settings.currency}
+        oncategory={(category) => (sheet = { kind: "category", category })}
+        onbill={(bill) => (sheet = { kind: "bill", bill })}
+      />
+    {:else if sheet.kind === "category"}
+      <CategoryForm {plugin} categories={$finance.categories} category={sheet.category} onclose={manage} />
+    {:else if sheet.kind === "bill"}
+      <BillForm {plugin} data={$finance} bill={sheet.bill} onclose={manage} />
     {:else}
       <TaskForm
         {plugin}

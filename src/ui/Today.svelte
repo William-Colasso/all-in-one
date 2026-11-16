@@ -2,10 +2,13 @@
   import type AllInOnePlugin from "../main";
   import type { Doc, TaskRef } from "../types";
   import type { HabitState } from "../habits/types";
+  import type { FinanceState } from "../finance/types";
   import { t } from "../i18n";
   import { bucketOf } from "../tasks/parse";
   import { isDone, isScheduled } from "../habits/parse";
   import { fmtDate, refs } from "./util";
+  import { dueSoon } from "./finance";
+  import BillRow from "./BillRow.svelte";
   import HabitRow from "./HabitRow.svelte";
   import Icon from "./Icon.svelte";
   import TaskRow from "./TaskRow.svelte";
@@ -14,6 +17,7 @@
     plugin,
     doc,
     habits,
+    finance,
     today,
     onedit,
     onhabit,
@@ -21,6 +25,7 @@
     plugin: AllInOnePlugin;
     doc: Doc;
     habits: HabitState;
+    finance: FinanceState;
     today: string;
     onedit: (ref: TaskRef) => void;
     onhabit: (name: string, date: string) => void;
@@ -31,6 +36,7 @@
   const done = $derived(refs(doc, null, (x) => x.done && x.doneDate === today));
   const scheduled = $derived(habits.habits.filter((h) => isScheduled(h, today)));
   const habitsDone = $derived(scheduled.filter((h) => isDone(h, habits.log[today]?.[h.name])).length);
+  const bills = $derived(dueSoon(finance, today));
 </script>
 
 <header class="aio-today-head">
@@ -46,7 +52,11 @@
   <h2 class="aio-section">{t("when.today")}</h2>
   {#each due as ref (ref.index)}<TaskRow {plugin} {ref} {today} {onedit} />{/each}
 {/if}
-{#if !overdue.length && !due.length && habitsDone === scheduled.length}
+{#if bills.length}
+  <h2 class="aio-section">{t("fin.toSettle")}</h2>
+  {#each bills as p (p.bill.name)}<BillRow {plugin} bill={p.bill} due={p.due} {today} />{/each}
+{/if}
+{#if !overdue.length && !due.length && !bills.length && habitsDone === scheduled.length}
   <div class="aio-empty"><Icon name="sun" size={48} /><p>{t("today.empty")}</p></div>
 {/if}
 {#if scheduled.length}

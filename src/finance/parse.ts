@@ -90,6 +90,11 @@ export function renameCategoryInTxs(doc: TxDoc, from: string, to: string): TxDoc
   return doc.map((l) => (l.kind === "tx" && l.tx.category === from ? { kind: "tx", tx: { ...l.tx, category: to } } : l));
 }
 
+export function renameBillInTxs(doc: TxDoc, from: string, to: string): TxDoc {
+  if (from === to) return doc;
+  return doc.map((l) => (l.kind === "tx" && l.tx.bill === from ? { kind: "tx", tx: { ...l.tx, bill: to } } : l));
+}
+
 // ---- config ----
 
 const CFG_FIELD = /\[(amount|day|budget|cat)::\s*([^\]]*)\]/gi;

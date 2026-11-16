@@ -8,6 +8,7 @@ import {
   parseConfig,
   parseTxs,
   removeTxAt,
+  renameBillInTxs,
   renameCategoryInTxs,
   sameTx,
   serializeConfig,
@@ -101,11 +102,18 @@ export class FinanceStore {
     return this.add({ date, amount: bill.amount, text: bill.name, category: bill.category, bill: bill.name });
   }
 
-  /** Carries a category rename over to every transaction file (the config itself is changed with mutateConfig). */
-  async renameCategory(from: string, to: string) {
-    for (const f of this.monthFiles()) {
-      await this.app.vault.process(f, (data) => serializeTxs(renameCategoryInTxs(parseTxs(data), from, to)));
-    }
+  private async rewriteAll(fn: (doc: TxDoc) => TxDoc) {
+    for (const f of this.monthFiles()) await this.app.vault.process(f, (data) => serializeTxs(fn(parseTxs(data))));
     await this.load();
+  }
+
+  /** Carries a category rename over to every transaction file (the config itself is changed with mutateConfig). */
+  renameCategory(from: string, to: string) {
+    return this.rewriteAll((doc) => renameCategoryInTxs(doc, from, to));
+  }
+
+  /** Carries a fixed-bill rename over to the payments already recorded, so they still settle it. */
+  renameBill(from: string, to: string) {
+    return this.rewriteAll((doc) => renameBillInTxs(doc, from, to));
   }
 }

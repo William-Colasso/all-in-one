@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addMonths, addTx, billsOf, byCategory, categoriesOf, cleanName, dueDate, parseAmount, parseConfig,
-  parseTxs, pendingBills, removeBill, removeCategory, removeTxAt, renameCategoryInTxs, sameTx,
+  parseTxs, pendingBills, removeBill, removeCategory, removeTxAt, renameBillInTxs, renameCategoryInTxs, sameTx,
   serializeConfig, serializeTxs, totals, txsOf, updateTxAt, upsertBill, upsertCategory,
 } from "./parse";
 import type { Bill, Tx } from "./types";
@@ -74,6 +74,13 @@ describe("transactions", () => {
     for (const o of [{ date: "2026-11-06" }, { amount: -0.31 }, { text: "y" }, { category: "d" }, { bill: null }])
       expect(sameTx(a, { ...a, ...o })).toBe(false);
   });
+  it("renameBillInTxs keeps settled payments linked after a bill rename", () => {
+    const d = parseTxs("- 2026-11-05 -1.00 [bill:: Rent]\n- 2026-11-06 -1.00 [bill:: Gym]\n");
+    expect(serializeTxs(renameBillInTxs(d, "Rent", "Flat"))).toBe(
+      "- 2026-11-05 -1.00 [bill:: Flat]\n- 2026-11-06 -1.00 [bill:: Gym]\n",
+    );
+  });
+
   it("renameCategoryInTxs renames matching transactions only", () => {
     const d = parseTxs("- 2026-11-05 -1 [cat:: A]\n- 2026-11-06 -1 [cat:: B]\nx\n");
     expect(serializeTxs(renameCategoryInTxs(d, "A", "C"))).toBe("- 2026-11-05 -1.00 [cat:: C]\n- 2026-11-06 -1.00 [cat:: B]\nx\n");

@@ -1,6 +1,6 @@
 {
   "name": "all-in-one",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Mobile-first daily life hub for Obsidian: tasks, habits, finances, agenda and more.",
   "main": "main.js",
   "type": "module",

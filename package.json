@@ -1,0 +1,25 @@
+{
+  "name": "all-in-one",
+  "version": "0.1.0",
+  "description": "Mobile-first daily life hub for Obsidian: tasks, habits, finances, agenda and more.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "svelte-check && node esbuild.config.mjs production",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "esbuild-svelte": "^0.9.5",
+    "obsidian": "^1.14.4",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "tslib": "^2.9.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

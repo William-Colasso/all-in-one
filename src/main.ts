@@ -1,6 +1,19 @@
-import { ItemView, normalizePath, Plugin, PluginSettingTab, Setting, type WorkspaceLeaf } from "obsidian";
+import {
+  ItemView,
+  Modal,
+  normalizePath,
+  Plugin,
+  PluginSettingTab,
+  SecretComponent,
+  Setting,
+  type TFile,
+  type WorkspaceLeaf,
+} from "obsidian";
 import { mount, unmount } from "svelte";
 import App from "./ui/App.svelte";
+import AiAsk from "./ui/AiAsk.svelte";
+import { Ai, AI_DEFAULTS, type AiSettings } from "./ai";
+import type { Provider } from "./ai/types";
 import { isPt, t } from "./i18n";
 import { DocStore, processFile, TaskStore } from "./store";
 import { HabitStore } from "./habits/store";
@@ -32,6 +45,7 @@ interface Settings {
   wishFile: string;
   /** Default number of days in advance to remind about birthdays and special dates. */
   leadDays: number;
+  ai: AiSettings;
 }
 
 class HubView extends ItemView {
@@ -70,6 +84,7 @@ export default class AllInOnePlugin extends Plugin {
   dates!: DocStore<DatesDoc>;
   lists!: ListStore;
   wishes!: DocStore<WishDoc>;
+  ai!: Ai;
 
   async onload() {
     // File names are localized once, on first run, then kept so switching language never orphans data.
@@ -88,6 +103,7 @@ export default class AllInOnePlugin extends Plugin {
         listsFolder: t("file.lists"),
         wishFile: `${t("file.wishes")}.md`,
         leadDays: 14,
+        ai: { provider: "anthropic", secret: "", ...AI_DEFAULTS.anthropic },
       },
       await this.loadData(),
     );
@@ -110,6 +126,7 @@ export default class AllInOnePlugin extends Plugin {
     this.dates = new DocStore(this.app, () => `${root()}/${this.settings.datesFile}`, parseDates, serializeDates);
     this.lists = new ListStore(this.app, () => `${root()}/${this.settings.listsFolder}`);
     this.wishes = new DocStore(this.app, () => `${root()}/${this.settings.wishFile}`, parseWishes, serializeWishes);
+    this.ai = new Ai(this.app, () => this.settings.ai);
     const reload = (path: string) => {
       if (this.tasks.owns(path)) void this.tasks.load();
       if (this.agenda.owns(path)) void this.agenda.load();
@@ -134,6 +151,16 @@ export default class AllInOnePlugin extends Plugin {
     this.registerView(VIEW_TYPE, (leaf) => new HubView(leaf, this));
     this.addRibbonIcon("layout-dashboard", t("cmd.open"), () => this.openHub());
     this.addCommand({ id: "open-hub", name: t("cmd.open"), callback: () => this.openHub() });
+    this.addCommand({
+      id: "ask-ai",
+      name: t("ai.ask"),
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== "md" || !this.ai.enabled) return false;
+        if (!checking) new AskModal(this, file).open();
+        return true;
+      },
+    });
     this.addSettingTab(new SettingsTab(this));
   }
 
@@ -170,6 +197,19 @@ export default class AllInOnePlugin extends Plugin {
     return path;
   }
 
+  /** Vault path of the wishlist file (AI research about a wish is appended there, quoted). */
+  get wishPath() {
+    return normalizePath(`${this.settings.rootFolder}/${this.settings.wishFile}`);
+  }
+
+  /** Appends a Markdown block to the end of a note, separated by a blank line. Creates the note if missing. */
+  async appendToNote(path: string, markdown: string) {
+    await processFile(this.app, path, (data) => {
+      const head = data.replace(/\s+$/, "");
+      return `${head ? head + "\n\n" : ""}${markdown.trim()}\n`;
+    });
+  }
+
   /** Opens a vault note in a new tab (e.g. a person's note, to write free-form text in its body). */
   async openNote(path: string) {
     const file = this.app.vault.getFileByPath(normalizePath(path));
@@ -181,6 +221,27 @@ export default class AllInOnePlugin extends Plugin {
     const setting = (this.app as any).setting;
     setting?.open();
     setting?.openTabById(this.manifest.id);
+  }
+}
+
+/** "Ask AI about this note": a one-question, one-answer dialog for the active note. */
+class AskModal extends Modal {
+  private component: ReturnType<typeof mount> | null = null;
+
+  constructor(private plugin: AllInOnePlugin, private file: TFile) {
+    super(plugin.app);
+  }
+  onOpen() {
+    this.setTitle(t("ai.ask"));
+    this.component = mount(AiAsk, {
+      target: this.contentEl,
+      props: { plugin: this.plugin, file: this.file, close: () => this.close() },
+    });
+  }
+  onClose() {
+    if (this.component) void unmount(this.component);
+    this.component = null;
+    this.contentEl.empty();
   }
 }
 
@@ -224,5 +285,53 @@ class SettingsTab extends PluginSettingTab {
           await this.plugin.dates.load(); // re-emit so open views recompute reminders
         }),
       );
+
+    const ai = this.plugin.settings.ai;
+    const save = () => this.plugin.saveData(this.plugin.settings);
+    new Setting(this.containerEl).setName(t("settings.ai")).setHeading();
+    new Setting(this.containerEl)
+      .setName(t("settings.ai.provider"))
+      .setDesc(t("settings.ai.desc"))
+      .addDropdown((d) =>
+        d
+          .addOption("anthropic", "Anthropic (Claude)")
+          .addOption("openai", t("settings.ai.compatible"))
+          .setValue(ai.provider)
+          .onChange(async (v) => {
+            ai.provider = v as Provider;
+            Object.assign(ai, AI_DEFAULTS[ai.provider]);
+            await save();
+            this.display(); // the fields below depend on the provider
+          }),
+      );
+    new Setting(this.containerEl)
+      .setName(t("settings.ai.key"))
+      .setDesc(t("settings.ai.key.desc"))
+      .addComponent((el) =>
+        new SecretComponent(this.app, el).setValue(ai.secret).onChange(async (v) => {
+          ai.secret = v ?? "";
+          await save();
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName(t("settings.ai.model"))
+      .setDesc(t(ai.provider === "anthropic" ? "settings.ai.model.claude" : "settings.ai.model.other"))
+      .addText((text) =>
+        text.setValue(ai.model).onChange(async (v) => {
+          ai.model = v.trim();
+          await save();
+        }),
+      );
+    if (ai.provider === "openai") {
+      new Setting(this.containerEl)
+        .setName(t("settings.ai.url"))
+        .setDesc(t("settings.ai.url.desc"))
+        .addText((text) =>
+          text.setValue(ai.baseUrl).onChange(async (v) => {
+            ai.baseUrl = v.trim();
+            await save();
+          }),
+        );
+    }
   }
 }

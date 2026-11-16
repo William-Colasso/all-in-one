@@ -386,7 +386,7 @@ const ptBR: Record<keyof typeof en, string> = {
   "prio.low": "Baixa",
   "prio.medium": "Média",
   "prio.high": "Alta",
-  "rec.none": "Não repete",
+  "rec.none": "Nunca",
   "rec.daily": "Diária",
   "rec.weekly": "Semanal",
   "rec.monthly": "Mensal",

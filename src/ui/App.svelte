@@ -350,7 +350,7 @@
     justify-content: center;
     background: var(--background-secondary);
     border-top: 1px solid var(--background-modifier-border);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: 0; /* the root already reserves the safe area and navbar (--aio-bottom) */
   }
   .aio-tab {
     flex: 1;

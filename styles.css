@@ -1,7 +1,9 @@
 /* All in One — global bits. Component styles live in each .svelte file. */
 
 .view-content.aio-root {
-  padding: 0 !important;
+  /* Obsidian mobile floats its own navbar over the bottom of every view; keep our tab bar above it. */
+  --aio-bottom: var(--view-bottom-spacing, env(safe-area-inset-bottom, 0px));
+  padding: 0 0 var(--aio-bottom) !important;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -145,4 +147,16 @@
   background: var(--interactive-accent);
   border-color: var(--interactive-accent);
   color: var(--text-on-accent);
+}
+
+/* Obsidian themes date inputs on mobile but leaves time inputs with the browser default look. */
+.aio-root input[type="time"] {
+  height: var(--input-height);
+  padding: var(--size-4-1) var(--size-4-3);
+  border: var(--input-border-width) solid var(--background-modifier-border);
+  border-radius: var(--input-radius);
+  background: var(--background-modifier-form-field);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-medium);
 }

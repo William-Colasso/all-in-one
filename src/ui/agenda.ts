@@ -1,5 +1,6 @@
 import type { TaskRef } from "../types";
 import type { AgendaDoc, AgendaGroup, EventRef } from "../agenda/types";
+import type { DayEvent } from "../people/types";
 import { groupOf, occurrences, sameEvent } from "../agenda/parse";
 import { todayISO } from "../tasks/parse";
 import { addDays } from "./util";
@@ -7,16 +8,23 @@ import { addDays } from "./util";
 /** How far ahead the Agenda screen looks. */
 export const DAYS = 60;
 
-export type Item = { date: string } & ({ event: EventRef } | { task: TaskRef });
+export type Item = { date: string } & ({ event: EventRef } | { task: TaskRef } | { day: DayEvent });
 
 /**
- * Appointments (repeats expanded) and open dated tasks from today through DAYS ahead,
- * grouped by groupOf. Within a day: appointments (all-day first, then time), then tasks
- * in the order given (callers pass them priority-sorted).
+ * Birthdays / special dates, appointments (repeats expanded) and open dated tasks from today
+ * through DAYS ahead, grouped by groupOf. Within a day: birthdays and special dates, then
+ * appointments (all-day first, then time), then tasks in the order given (callers pass them
+ * priority-sorted).
  */
-export function agendaGroups(events: EventRef[], tasks: TaskRef[], today: string): [AgendaGroup, Item[]][] {
+export function agendaGroups(
+  events: EventRef[],
+  tasks: TaskRef[],
+  today: string,
+  days: DayEvent[] = [],
+): [AgendaGroup, Item[]][] {
   const to = addDays(today, DAYS);
   const items: Item[] = [
+    ...days.filter((d) => d.date >= today && d.date <= to).map((day) => ({ date: day.date, day })),
     ...occurrences(events, today, to).map(({ date, ref }) => ({ date, event: ref })),
     ...tasks
       .filter(({ task: x }) => !x.done && !!x.due && x.due >= today && x.due <= to)

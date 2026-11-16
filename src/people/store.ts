@@ -48,7 +48,12 @@ export class PeopleStore {
     await processFile(this.app, target, (data) => data); // creates the note and folder if missing
     const file = this.app.vault.getFileByPath(target)!;
     await this.app.fileManager.processFrontMatter(file, (fm) => applyPerson(fm, person));
-    // The metadata cache updates asynchronously; main.ts reloads this store on its "changed" event.
+    // The metadata cache updates a moment later (main.ts reloads on its "changed" event), so
+    // publish the saved person now: a sheet reopened in between must not start from a stale copy.
+    this.people = [...this.people.filter((p) => p.name !== person.name && p.name !== oldName), person].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    this.subs.forEach((fn) => fn(this.people));
   }
 
   /** Moves the person's note to the trash (per the user's Obsidian deletion setting). */

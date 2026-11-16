@@ -1,7 +1,7 @@
 {
   "id": "all-in-one",
   "name": "All in One",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "minAppVersion": "1.8.0",
   "description": "Mobile-first hub for everyday life: tasks, habits, finances, agenda and more, stored as plain Markdown.",
   "author": "William Colasso",

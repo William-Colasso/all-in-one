@@ -4,11 +4,15 @@
   import type { Habit } from "../habits/types";
   import type { Bill, Category, TxRef } from "../finance/types";
   import type { EventRef } from "../agenda/types";
+  import type { DayEvent, Person, SpecialDate } from "../people/types";
+  import type { WishRef } from "../lists/types";
   import { type Key, t } from "../i18n";
   import { todayISO } from "../tasks/parse";
+  import { datesOf } from "../people/parse";
   import Agenda from "./Agenda.svelte";
   import BillForm from "./BillForm.svelte";
   import CategoryForm from "./CategoryForm.svelte";
+  import DateForm from "./DateForm.svelte";
   import EventForm from "./EventForm.svelte";
   import FinanceManage from "./FinanceManage.svelte";
   import Finances from "./Finances.svelte";
@@ -16,11 +20,17 @@
   import HabitDetail from "./HabitDetail.svelte";
   import HabitForm from "./HabitForm.svelte";
   import Habits from "./Habits.svelte";
+  import ListCapture from "./ListCapture.svelte";
+  import Lists from "./Lists.svelte";
+  import People from "./People.svelte";
+  import PersonDetail from "./PersonDetail.svelte";
+  import PersonForm from "./PersonForm.svelte";
   import Sheet from "./Sheet.svelte";
   import TaskForm from "./TaskForm.svelte";
   import Tasks from "./Tasks.svelte";
   import Today from "./Today.svelte";
   import TxForm from "./TxForm.svelte";
+  import WishForm from "./WishForm.svelte";
 
   let { plugin }: { plugin: AllInOnePlugin } = $props();
 
@@ -33,18 +43,24 @@
     { id: "finances", icon: "wallet", key: "tab.finances" },
     { id: "more", icon: "more-horizontal", key: "tab.more" },
   ];
-  const SOON_TYPES: Item[] = [{ icon: "list", key: "type.listItem" }];
-  const SOON_MORE: Item[] = [
-    { icon: "users", key: "more.people" },
-    { icon: "list", key: "more.lists" },
+  type Screen = "agenda" | "people" | "lists";
+  const SCREENS: (Item & { id: Screen })[] = [
+    { id: "agenda", icon: "calendar", key: "more.agenda" },
+    { id: "people", icon: "users", key: "more.people" },
+    { id: "lists", icon: "list", key: "more.lists" },
   ];
 
   const tasks = $derived(plugin.tasks);
   const habits = $derived(plugin.habits);
   const finance = $derived(plugin.finance);
   const agenda = $derived(plugin.agenda);
+  const people = $derived(plugin.people);
+  const dates = $derived(plugin.dates);
+  const lists = $derived(plugin.lists);
+  const wishes = $derived(plugin.wishes);
   let tab = $state<Tab>("today");
-  let agendaOpen = $state(false); // the More tab shows the Agenda screen instead of its list
+  let screen = $state<Screen | null>(null); // the More tab shows this screen instead of its list
+  let openList = $state<string | null>(null); // shopping list open in the Lists screen, the capture default
   let filter = $state<string | null>(null); // list filter of the Tasks tab, also the default list for new tasks there
   let sheet = $state.raw<
     | { kind: "pick" }
@@ -56,6 +72,11 @@
     | { kind: "category"; category: Category | null }
     | { kind: "bill"; bill: Bill | null }
     | { kind: "event"; ref: EventRef | null }
+    | { kind: "person"; name: string }
+    | { kind: "personForm"; person: Person | null }
+    | { kind: "date"; date: SpecialDate | null }
+    | { kind: "wish"; ref: WishRef | null }
+    | { kind: "listItem" }
     | null
   >(null);
 
@@ -72,7 +93,17 @@
   const editTx = (ref: TxRef | null) => (sheet = { kind: "tx", ref });
   const manage = () => (sheet = { kind: "manage" });
   const editEvent = (ref: EventRef | null) => (sheet = { kind: "event", ref });
+  const openPerson = (name: string) => (sheet = { kind: "person", name });
+  const editPerson = (person: Person | null) => (sheet = { kind: "personForm", person });
+  const editDate = (date: SpecialDate | null) => (sheet = { kind: "date", date });
+  const editWish = (ref: WishRef | null) => (sheet = { kind: "wish", ref });
   const close = () => (sheet = null);
+  // A birthday opens the person; a special date its form.
+  function openDay(e: DayEvent) {
+    if (e.kind === "birthday") return openPerson(e.title);
+    const date = datesOf($dates).find((d) => d.name === e.title);
+    if (date) editDate(date);
+  }
   const title = $derived.by(() => {
     switch (sheet?.kind) {
       case "task":
@@ -91,6 +122,16 @@
         return t(sheet.bill ? "fin.editBill" : "fin.newBill");
       case "event":
         return t(sheet.ref ? "agenda.edit" : "agenda.new");
+      case "person":
+        return sheet.name;
+      case "personForm":
+        return t(sheet.person ? "people.edit" : "people.new");
+      case "date":
+        return t(sheet.date ? "dates.edit" : "dates.new");
+      case "wish":
+        return t(sheet.ref ? "wish.edit" : "wish.new");
+      case "listItem":
+        return t("type.listItem");
       default:
         return t("add.title");
     }
@@ -107,10 +148,13 @@
           habits={$habits}
           finance={$finance}
           agenda={$agenda}
+          people={$people}
+          dates={$dates}
           {today}
           onedit={edit}
           onhabit={openHabit}
           onevent={editEvent}
+          onday={openDay}
         />
       {:else if tab === "tasks"}
         <Tasks {plugin} doc={$tasks} {today} onedit={edit} bind:list={filter} />
@@ -118,28 +162,38 @@
         <Habits {plugin} data={$habits} {today} onopen={openHabit} oncreate={newHabit} />
       {:else if tab === "finances"}
         <Finances {plugin} data={$finance} {today} onedit={editTx} oncreate={() => editTx(null)} onmanage={manage} />
-      {:else if agendaOpen}
+      {:else if screen === "agenda"}
         <Agenda
           {plugin}
           agenda={$agenda}
           doc={$tasks}
+          people={$people}
+          dates={$dates}
           {today}
           onedit={editEvent}
           onedittask={edit}
+          onday={openDay}
           oncreate={() => editEvent(null)}
-          onback={() => (agendaOpen = false)}
+          onback={() => (screen = null)}
         />
+      {:else if screen === "people"}
+        <People
+          people={$people}
+          dates={$dates}
+          {today}
+          onperson={openPerson}
+          onnewperson={() => editPerson(null)}
+          ondate={editDate}
+          onback={() => (screen = null)}
+        />
+      {:else if screen === "lists"}
+        <Lists {plugin} lists={$lists} wishes={$wishes} bind:open={openList} onwish={editWish} onback={() => (screen = null)} />
       {:else}
         <ul class="aio-menu">
-          <li>
-            <button class="aio-item" onclick={() => (agendaOpen = true)}>
-              <Icon name="calendar" size={22} /><span class="name">{t("more.agenda")}</span><Icon name="chevron-right" />
-            </button>
-          </li>
-          {#each SOON_MORE as item (item.key)}
+          {#each SCREENS as item (item.id)}
             <li>
-              <button class="aio-item" disabled>
-                <Icon name={item.icon} size={22} /><span class="name">{t(item.key)}</span><span class="soon">{t("soon")}</span>
+              <button class="aio-item" onclick={() => (screen = item.id)}>
+                <Icon name={item.icon} size={22} /><span class="name">{t(item.key)}</span><Icon name="chevron-right" />
               </button>
             </li>
           {/each}
@@ -190,13 +244,11 @@
             <Icon name="calendar" size={22} /><span class="name">{t("type.appointment")}</span><Icon name="chevron-right" />
           </button>
         </li>
-        {#each SOON_TYPES as item (item.key)}
-          <li>
-            <button class="aio-item" disabled>
-              <Icon name={item.icon} size={22} /><span class="name">{t(item.key)}</span><span class="soon">{t("soon")}</span>
-            </button>
-          </li>
-        {/each}
+        <li>
+          <button class="aio-item" onclick={() => (sheet = { kind: "listItem" })}>
+            <Icon name="list" size={22} /><span class="name">{t("type.listItem")}</span><Icon name="chevron-right" />
+          </button>
+        </li>
       </ul>
     {:else if sheet.kind === "habit"}
       <HabitForm {plugin} habits={$habits.habits} habit={sheet.habit} onclose={close} />
@@ -229,6 +281,18 @@
       <BillForm {plugin} data={$finance} bill={sheet.bill} onclose={manage} />
     {:else if sheet.kind === "event"}
       <EventForm {plugin} {today} ref={sheet.ref} onclose={close} />
+    {:else if sheet.kind === "person"}
+      {@const { name } = sheet}
+      {@const person = $people.find((p) => p.name === name)}
+      {#if person}<PersonDetail {plugin} {person} {today} onedit={editPerson} onclose={close} />{/if}
+    {:else if sheet.kind === "personForm"}
+      <PersonForm {plugin} people={$people} person={sheet.person} onclose={close} />
+    {:else if sheet.kind === "date"}
+      <DateForm {plugin} people={$people} dates={datesOf($dates)} date={sheet.date} onclose={close} />
+    {:else if sheet.kind === "wish"}
+      <WishForm {plugin} ref={sheet.ref} onclose={close} />
+    {:else if sheet.kind === "listItem"}
+      <ListCapture {plugin} lists={$lists} initial={tab === "more" && screen === "lists" ? openList : null} onclose={close} />
     {:else}
       <TaskForm
         {plugin}
@@ -336,23 +400,12 @@
     color: var(--text-normal);
     font-size: var(--font-ui-medium);
   }
-  .aio-item:active:not(:disabled) {
+  .aio-item:active {
     background: var(--background-modifier-hover);
-  }
-  .aio-item:disabled {
-    color: var(--text-faint);
-    opacity: 1;
   }
   .name {
     flex: 1;
     text-align: left;
-  }
-  .soon {
-    font-size: var(--font-ui-small);
-    color: var(--text-faint);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    padding: 1px var(--size-4-2);
   }
   @media (prefers-reduced-motion: reduce) {
     .aio-fab {

@@ -1,9 +1,13 @@
 <script lang="ts">
   import type AllInOnePlugin from "../main";
   import type { TaskRef } from "../types";
+  import type { Habit } from "../habits/types";
   import { type Key, t } from "../i18n";
   import { todayISO } from "../tasks/parse";
   import Icon from "./Icon.svelte";
+  import HabitDetail from "./HabitDetail.svelte";
+  import HabitForm from "./HabitForm.svelte";
+  import Habits from "./Habits.svelte";
   import Sheet from "./Sheet.svelte";
   import TaskForm from "./TaskForm.svelte";
   import Tasks from "./Tasks.svelte";
@@ -23,7 +27,6 @@
   const SOON_TYPES: Item[] = [
     { icon: "wallet", key: "type.expense" },
     { icon: "calendar", key: "type.appointment" },
-    { icon: "repeat", key: "type.habit" },
     { icon: "list", key: "type.listItem" },
   ];
   const SOON_MORE: Item[] = [
@@ -33,9 +36,16 @@
   ];
 
   const tasks = $derived(plugin.tasks);
+  const habits = $derived(plugin.habits);
   let tab = $state<Tab>("today");
   let filter = $state<string | null>(null); // list filter of the Tasks tab, also the default list for new tasks there
-  let sheet = $state.raw<{ kind: "pick" } | { kind: "task"; ref: TaskRef | null } | null>(null);
+  let sheet = $state.raw<
+    | { kind: "pick" }
+    | { kind: "task"; ref: TaskRef | null }
+    | { kind: "habit"; habit: Habit | null }
+    | { kind: "detail"; name: string; date: string }
+    | null
+  >(null);
 
   // Keeps "today" right when the view stays open past midnight.
   let today = $state(todayISO());
@@ -45,9 +55,17 @@
   });
 
   const edit = (ref: TaskRef) => (sheet = { kind: "task", ref });
+  const openHabit = (name: string, date: string) => (sheet = { kind: "detail", name, date });
+  const newHabit = () => (sheet = { kind: "habit", habit: null });
   const close = () => (sheet = null);
   const title = $derived(
-    sheet?.kind === "task" ? t(sheet.ref ? "form.edit" : "form.new") : t("add.title"),
+    sheet?.kind === "task"
+      ? t(sheet.ref ? "form.edit" : "form.new")
+      : sheet?.kind === "habit"
+        ? t(sheet.habit ? "habit.edit" : "habit.new")
+        : sheet?.kind === "detail"
+          ? sheet.name
+          : t("add.title"),
   );
 </script>
 
@@ -55,9 +73,11 @@
   <div class="aio-page">
     <div class="aio-col">
       {#if tab === "today"}
-        <Today {plugin} doc={$tasks} {today} onedit={edit} />
+        <Today {plugin} doc={$tasks} habits={$habits} {today} onedit={edit} onhabit={openHabit} />
       {:else if tab === "tasks"}
         <Tasks {plugin} doc={$tasks} {today} onedit={edit} bind:list={filter} />
+      {:else if tab === "habits"}
+        <Habits {plugin} data={$habits} {today} onopen={openHabit} oncreate={newHabit} />
       {:else if tab === "more"}
         <ul class="aio-menu">
           {#each SOON_MORE as item (item.key)}
@@ -75,8 +95,8 @@
         </ul>
       {:else}
         <div class="aio-empty">
-          <Icon name={tab === "habits" ? "repeat" : "wallet"} size={48} />
-          <p>{t(tab === "habits" ? "soon.habits" : "soon.finances")}</p>
+          <Icon name="wallet" size={48} />
+          <p>{t("soon.finances")}</p>
         </div>
       {/if}
     </div>
@@ -104,6 +124,11 @@
             <Icon name="check-square" size={22} /><span class="name">{t("type.task")}</span><Icon name="chevron-right" />
           </button>
         </li>
+        <li>
+          <button class="aio-item" onclick={newHabit}>
+            <Icon name="repeat" size={22} /><span class="name">{t("type.habit")}</span><Icon name="chevron-right" />
+          </button>
+        </li>
         {#each SOON_TYPES as item (item.key)}
           <li>
             <button class="aio-item" disabled>
@@ -112,6 +137,22 @@
           </li>
         {/each}
       </ul>
+    {:else if sheet.kind === "habit"}
+      <HabitForm {plugin} habits={$habits.habits} habit={sheet.habit} onclose={close} />
+    {:else if sheet.kind === "detail"}
+      {@const { name, date } = sheet}
+      {@const habit = $habits.habits.find((h) => h.name === name)}
+      {#if habit}
+        <HabitDetail
+          {plugin}
+          {habit}
+          log={$habits.log}
+          {date}
+          {today}
+          onedit={() => (sheet = { kind: "habit", habit })}
+          onclose={close}
+        />
+      {/if}
     {:else}
       <TaskForm
         {plugin}

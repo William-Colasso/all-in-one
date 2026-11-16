@@ -3,12 +3,15 @@ import { mount, unmount } from "svelte";
 import App from "./ui/App.svelte";
 import { t } from "./i18n";
 import { TaskStore } from "./store";
+import { HabitStore } from "./habits/store";
 
 const VIEW_TYPE = "all-in-one-hub";
 
 interface Settings {
   rootFolder: string;
   tasksFile: string;
+  habitsFile: string;
+  habitsFolder: string;
 }
 
 class HubView extends ItemView {
@@ -40,26 +43,49 @@ class HubView extends ItemView {
 export default class AllInOnePlugin extends Plugin {
   settings!: Settings;
   tasks!: TaskStore;
+  habits!: HabitStore;
 
   async onload() {
     // File names are localized once, on first run, then kept so switching language never orphans data.
     this.settings = Object.assign(
-      { rootFolder: t("file.root"), tasksFile: `${t("file.tasks")}.md` },
+      {
+        rootFolder: t("file.root"),
+        tasksFile: `${t("file.tasks")}.md`,
+        habitsFile: `${t("file.habits")}.md`,
+        habitsFolder: t("file.habits"),
+      },
       await this.loadData(),
     );
     await this.saveData(this.settings);
 
-    this.tasks = new TaskStore(this.app, () => `${this.settings.rootFolder}/${this.settings.tasksFile}`);
-    const reload = (path: string) => this.tasks.isTasksFile(path) && this.tasks.load();
+    const root = () => this.settings.rootFolder;
+    this.tasks = new TaskStore(this.app, () => `${root()}/${this.settings.tasksFile}`);
+    this.habits = new HabitStore(
+      this.app,
+      () => `${root()}/${this.settings.habitsFile}`,
+      () => `${root()}/${this.settings.habitsFolder}`,
+    );
+    const reload = (path: string) => {
+      if (this.tasks.isTasksFile(path)) void this.tasks.load();
+      if (this.habits.owns(path)) void this.habits.load();
+    };
     this.registerEvent(this.app.vault.on("modify", (f) => reload(f.path)));
     this.registerEvent(this.app.vault.on("delete", (f) => reload(f.path)));
-    this.registerEvent(this.app.vault.on("rename", () => this.tasks.load()));
-    this.app.workspace.onLayoutReady(() => this.tasks.load());
+    this.registerEvent(this.app.vault.on("rename", () => void this.loadAll()));
+    // "create" also fires for every file while the vault loads; onLayoutReady covers that first read.
+    this.app.workspace.onLayoutReady(() => {
+      void this.loadAll();
+      this.registerEvent(this.app.vault.on("create", (f) => reload(f.path)));
+    });
 
     this.registerView(VIEW_TYPE, (leaf) => new HubView(leaf, this));
     this.addRibbonIcon("layout-dashboard", t("cmd.open"), () => this.openHub());
     this.addCommand({ id: "open-hub", name: t("cmd.open"), callback: () => this.openHub() });
     this.addSettingTab(new SettingsTab(this));
+  }
+
+  loadAll() {
+    return Promise.all([this.tasks.load(), this.habits.load()]);
   }
 
   async openHub() {
@@ -90,7 +116,7 @@ class SettingsTab extends PluginSettingTab {
         text.setValue(this.plugin.settings.rootFolder).onChange(async (v) => {
           this.plugin.settings.rootFolder = v.trim().replace(/^\/+|\/+$/g, "") || t("file.root");
           await this.plugin.saveData(this.plugin.settings);
-          await this.plugin.tasks.load();
+          await this.plugin.loadAll();
         }),
       );
   }

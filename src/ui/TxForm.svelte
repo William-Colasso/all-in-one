@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import type AllInOnePlugin from "../main";
   import type { FinanceState, Tx, TxRef } from "../finance/types";
   import { t } from "../i18n";
   import { cleanName, parseAmount, upsertCategory } from "../finance/parse";
+  import { categoryPrompt, pickCategory } from "../ai/prompts";
   import { attempt } from "./habits";
+  import { aiMessage } from "./ai";
   import { amountInput, categoryNames } from "./finance";
   import CategoryPicker from "./CategoryPicker.svelte";
   import Icon from "./Icon.svelte";
@@ -35,6 +37,29 @@
   const category = $derived(cat ?? cleanName(draft));
   const isNew = $derived(cat === null && !!category && !init.categories.some((c) => c.name === category));
   const valid = $derived(!!value && value > 0 && !!date);
+
+  // AI category suggestion: only on tap; selects a chip, nothing is saved until Save.
+  let suggesting = $state(false);
+  let hint = $state<{ text: string; error: boolean } | null>(null);
+  let alive = true;
+  onDestroy(() => (alive = false));
+
+  async function suggest() {
+    if (suggesting) return;
+    suggesting = true;
+    hint = null;
+    try {
+      const r = await plugin.ai.complete(categoryPrompt(cleanName(text), init.names));
+      const pick = pickCategory(r.text, init.names);
+      if (!alive) return;
+      if (pick) cat = pick;
+      else hint = { text: t("ai.noSuggestion"), error: false };
+    } catch (e) {
+      if (!alive) return;
+      hint = { text: aiMessage(e), error: true };
+    }
+    suggesting = false;
+  }
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -89,7 +114,15 @@
     enterkeyhint="done"
   />
 
-  <CategoryPicker names={init.names} bind:value={cat} bind:draft />
+  <div class="cat">
+    {#if plugin.ai.enabled && init.names.length && (text.trim() || suggesting)}
+      <button type="button" class="suggest" aria-label={t("ai.category")} aria-busy={suggesting} onclick={suggest}>
+        {#if suggesting}<span class="aio-spin"></span>{:else}<Icon name="sparkles" size={20} />{/if}
+      </button>
+    {/if}
+    <CategoryPicker names={init.names} bind:value={cat} bind:draft />
+    {#if hint}<p class="msg" class:error={hint.error} role={hint.error ? "alert" : "status"}>{hint.text}</p>{/if}
+  </div>
 
   <label class="label" for="{uid}-date">{t("fin.date")}</label>
   <input id="{uid}-date" type="date" class="aio-input" bind:value={date} />
@@ -126,6 +159,42 @@
     font-size: 1.75em;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+  /* CategoryPicker's label shares its row with the suggest button; its chips and input span the width. */
+  .cat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--size-4-2);
+  }
+  .cat > :global(*) {
+    grid-column: 1 / -1;
+  }
+  .cat > :global(.label) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .cat > .suggest {
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: var(--interactive-accent);
+  }
+  .suggest:active {
+    background: var(--background-modifier-hover);
+  }
+  .msg {
+    margin: 0;
+    font-size: var(--font-ui-small);
+    color: var(--text-muted);
+  }
+  .msg.error {
+    color: var(--text-error);
   }
   .actions {
     display: flex;

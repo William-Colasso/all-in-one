@@ -15,12 +15,15 @@
     dates,
     date,
     onclose,
+    ongift,
   }: {
     plugin: AllInOnePlugin;
     people: Person[];
     dates: SpecialDate[];
     date: SpecialDate | null;
     onclose: () => void;
+    /** Opens a person's detail (where gift suggestions live) with this date as the occasion. */
+    ongift?: (person: string, occasion: string) => void;
   } = $props();
 
   // The form edits a snapshot taken when the sheet opens.
@@ -29,6 +32,8 @@
   // Existing people, plus linked names whose note is gone (so they can still be unlinked).
   const names = untrack(() => [...new Set([...people.map((p) => p.name), ...(init?.people ?? [])])]);
   const uid = $props.id();
+  // Saved linked people that still have a note: each gets a "Suggest gifts" shortcut.
+  const giftees = untrack(() => (init && ongift && plugin.ai.enabled ? init.people.filter((n) => people.some((p) => p.name === n)) : []));
 
   let name = $state(init?.name ?? "");
   let day = $state(parts.day);
@@ -111,6 +116,16 @@
   />
   {#if badLead}<p class="msg error" id="{uid}-lead-bad">{t("dates.badLead")}</p>{/if}
 
+  {#if giftees.length}
+    <div class="more">
+      {#each giftees as n (n)}
+        <button type="button" class="link" onclick={() => ongift!(n, init!.name)}>
+          <Icon name="sparkles" size={20} /><span>{t("ai.gifts.for", { name: n })}</span><Icon name="chevron-right" size={16} />
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <div class="actions">
     {#if init}
       <button type="button" class="delete" class:confirming onclick={remove}>
@@ -160,6 +175,35 @@
   }
   .msg.error {
     color: var(--text-error);
+  }
+  .more {
+    display: flex;
+    flex-direction: column;
+    margin-top: var(--size-4-4);
+    padding-top: var(--size-4-2);
+    border-top: 1px solid var(--background-modifier-border);
+  }
+  .link {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-3);
+    min-height: 48px;
+    padding: 0 var(--size-4-2);
+    border-radius: var(--radius-m);
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+  }
+  .link :global(.aio-icon:first-child) {
+    color: var(--interactive-accent);
+  }
+  .link span {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+  .link:active {
+    background: var(--background-modifier-hover);
   }
   .actions {
     display: flex;

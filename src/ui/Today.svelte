@@ -1,22 +1,36 @@
 <script lang="ts">
   import type AllInOnePlugin from "../main";
   import type { Doc, TaskRef } from "../types";
+  import type { HabitState } from "../habits/types";
   import { t } from "../i18n";
   import { bucketOf } from "../tasks/parse";
+  import { isDone, isScheduled } from "../habits/parse";
   import { fmtDate, refs } from "./util";
+  import HabitRow from "./HabitRow.svelte";
   import Icon from "./Icon.svelte";
   import TaskRow from "./TaskRow.svelte";
 
   let {
     plugin,
     doc,
+    habits,
     today,
     onedit,
-  }: { plugin: AllInOnePlugin; doc: Doc; today: string; onedit: (ref: TaskRef) => void } = $props();
+    onhabit,
+  }: {
+    plugin: AllInOnePlugin;
+    doc: Doc;
+    habits: HabitState;
+    today: string;
+    onedit: (ref: TaskRef) => void;
+    onhabit: (name: string, date: string) => void;
+  } = $props();
 
   const overdue = $derived(refs(doc, null, (x) => !x.done && bucketOf(x, today) === "overdue"));
   const due = $derived(refs(doc, null, (x) => !x.done && bucketOf(x, today) === "today"));
   const done = $derived(refs(doc, null, (x) => x.done && x.doneDate === today));
+  const scheduled = $derived(habits.habits.filter((h) => isScheduled(h, today)));
+  const habitsDone = $derived(scheduled.filter((h) => isDone(h, habits.log[today]?.[h.name])).length);
 </script>
 
 <header class="aio-today-head">
@@ -32,8 +46,14 @@
   <h2 class="aio-section">{t("when.today")}</h2>
   {#each due as ref (ref.index)}<TaskRow {plugin} {ref} {today} {onedit} />{/each}
 {/if}
-{#if !overdue.length && !due.length}
+{#if !overdue.length && !due.length && habitsDone === scheduled.length}
   <div class="aio-empty"><Icon name="sun" size={48} /><p>{t("today.empty")}</p></div>
+{/if}
+{#if scheduled.length}
+  <h2 class="aio-section count-head"><span>{t("tab.habits")}</span><span>{habitsDone} / {scheduled.length}</span></h2>
+  {#each scheduled as habit (habit.name)}
+    <HabitRow {plugin} {habit} log={habits.log} date={today} {today} compact onopen={() => onhabit(habit.name, today)} />
+  {/each}
 {/if}
 {#if done.length}
   <h2 class="aio-section">{t("today.done")}</h2>
@@ -55,5 +75,9 @@
     font-size: 1.75em;
     font-weight: 700;
     color: var(--text-normal);
+  }
+  .count-head {
+    display: flex;
+    justify-content: space-between;
   }
 </style>

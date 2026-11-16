@@ -3,12 +3,15 @@
   import type { Doc, TaskRef } from "../types";
   import type { HabitState } from "../habits/types";
   import type { FinanceState } from "../finance/types";
+  import type { AgendaDoc, EventRef } from "../agenda/types";
   import { t } from "../i18n";
   import { bucketOf } from "../tasks/parse";
   import { isDone, isScheduled } from "../habits/parse";
+  import { eventsOf, occurrences } from "../agenda/parse";
   import { fmtDate, refs } from "./util";
   import { dueSoon } from "./finance";
   import BillRow from "./BillRow.svelte";
+  import EventRow from "./EventRow.svelte";
   import HabitRow from "./HabitRow.svelte";
   import Icon from "./Icon.svelte";
   import TaskRow from "./TaskRow.svelte";
@@ -18,19 +21,24 @@
     doc,
     habits,
     finance,
+    agenda,
     today,
     onedit,
     onhabit,
+    onevent,
   }: {
     plugin: AllInOnePlugin;
     doc: Doc;
     habits: HabitState;
     finance: FinanceState;
+    agenda: AgendaDoc;
     today: string;
     onedit: (ref: TaskRef) => void;
     onhabit: (name: string, date: string) => void;
+    onevent: (ref: EventRef) => void;
   } = $props();
 
+  const events = $derived(occurrences(eventsOf(agenda), today, today));
   const overdue = $derived(refs(doc, null, (x) => !x.done && bucketOf(x, today) === "overdue"));
   const due = $derived(refs(doc, null, (x) => !x.done && bucketOf(x, today) === "today"));
   const done = $derived(refs(doc, null, (x) => x.done && x.doneDate === today));
@@ -44,6 +52,10 @@
   <h1>{fmtDate(today, { day: "numeric", month: "long" })}</h1>
 </header>
 
+{#if events.length}
+  <h2 class="aio-section">{t("more.agenda")}</h2>
+  {#each events as { ref } (ref.index)}<EventRow {ref} onedit={onevent} />{/each}
+{/if}
 {#if overdue.length}
   <h2 class="aio-section aio-error">{t("today.overdue")}</h2>
   {#each overdue as ref (ref.index)}<TaskRow {plugin} {ref} {today} {onedit} />{/each}
@@ -56,7 +68,7 @@
   <h2 class="aio-section">{t("fin.toSettle")}</h2>
   {#each bills as p (p.bill.name)}<BillRow {plugin} bill={p.bill} due={p.due} {today} />{/each}
 {/if}
-{#if !overdue.length && !due.length && !bills.length && habitsDone === scheduled.length}
+{#if !events.length && !overdue.length && !due.length && !bills.length && habitsDone === scheduled.length}
   <div class="aio-empty"><Icon name="sun" size={48} /><p>{t("today.empty")}</p></div>
 {/if}
 {#if scheduled.length}

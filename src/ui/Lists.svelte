@@ -136,6 +136,8 @@
           <button class="icon-btn" aria-label={t("wish.open", { text: w.text })} onclick={() => window.open(w.link)}>
             <Icon name="external-link" size={20} />
           </button>
+        {:else}
+          <span class="icon-btn" aria-hidden="true"></span>
         {/if}
       </div>
     {/each}

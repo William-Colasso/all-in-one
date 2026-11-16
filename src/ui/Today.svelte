@@ -101,7 +101,11 @@
 <style>
   .aio-today-head {
     padding: var(--size-4-6) var(--size-4-4) var(--size-4-2);
-    text-transform: capitalize;
+  }
+  /* Intl gives lowercase names in Portuguese; capitalize just the first letter ("Segunda-feira", "16 de novembro"). */
+  .weekday::first-letter,
+  h1::first-letter {
+    text-transform: uppercase;
   }
   .weekday {
     color: var(--interactive-accent);

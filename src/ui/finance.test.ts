@@ -13,7 +13,8 @@ describe("finance ui helpers", () => {
     expect(money(-42.5, "USD", true)).toBe("-$42.50");
     expect(money(10, "USD", true)).toBe("+$10.00");
     expect(money(-3, "USD")).toBe("-$3.00");
-    expect(amountInput(1234.5)).toBe("1234.5");
+    expect(amountInput(1234.5)).toBe("1234.50");
+    expect(amountInput(450)).toBe("450");
   });
 
   it("lists budgeted and spent categories, most spent first", () => {

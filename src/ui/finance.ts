@@ -6,8 +6,9 @@ import { addDays, locale } from "./util";
 export const money = (n: number, currency: string, signed = false) =>
   new Intl.NumberFormat(locale(), { style: "currency", currency, signDisplay: signed ? "exceptZero" : "auto" }).format(n);
 
-/** A stored amount the way the user would type it, e.g. 1234.5 → "1234,5" in pt-BR. */
-export const amountInput = (n: number) => n.toLocaleString(locale(), { useGrouping: false, maximumFractionDigits: 2 });
+/** Stored amount back to what a person would type: "42,50", but "450" rather than "450,00". */
+export const amountInput = (n: number) =>
+  n.toLocaleString(locale(), { useGrouping: false, minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
 
 export const inMonth = (txs: TxRef[], month: string) => txs.filter((r) => r.month === month);
 

@@ -22,7 +22,7 @@
 <style>
   .aio-sheet-wrap {
     position: absolute;
-    inset: 0;
+    inset: 0 0 var(--aio-bottom, 0px);
     z-index: 20;
     display: flex;
     flex-direction: column;
@@ -46,7 +46,7 @@
     max-width: 560px;
     max-height: 85%;
     margin: 0 auto;
-    background: var(--background-primary);
+    background: var(--background-secondary);
     color: var(--text-normal);
     border-radius: var(--radius-l) var(--radius-l) 0 0;
     border: 1px solid var(--background-modifier-border);
@@ -80,7 +80,7 @@
   .aio-sheet-body {
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--size-4-2) var(--size-4-4) calc(var(--size-4-4) + env(safe-area-inset-bottom));
+    padding: var(--size-4-2) var(--size-4-4) var(--size-4-4);
   }
   @keyframes aio-slide {
     from {

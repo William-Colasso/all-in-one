@@ -187,7 +187,7 @@
     gap: 2px;
     padding: var(--size-4-3);
     border-radius: var(--radius-m);
-    background: var(--background-secondary);
+    background: var(--background-primary) /* the sheet itself is secondary */;
   }
   .big {
     display: inline-flex;

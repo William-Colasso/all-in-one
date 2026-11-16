@@ -160,12 +160,13 @@
   }
   .due {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: wrap; /* the date takes its own line so the year is never clipped; shortcuts sit below */
     gap: var(--size-4-2);
   }
   .due .aio-input {
     width: auto;
-    flex: 1 1 140px;
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .actions {
     display: flex;

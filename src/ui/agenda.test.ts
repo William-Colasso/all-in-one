@@ -38,15 +38,21 @@ describe("agenda ui helpers", () => {
       task(14, "Far", "2027-03-01"), // past 60 days
       task(15, "Someday", null),
     ];
-    const groups = agendaGroups(events, tasks, today).map(([g, items]) => [
+    const days = [
+      { date: "2026-11-18", kind: "birthday" as const, title: "Ana", people: ["Ana"], turning: 36 },
+      { date: "2027-05-01", kind: "date" as const, title: "Far", people: [], turning: null }, // past 60 days
+    ];
+    const groups = agendaGroups(events, tasks, today, days).map(([g, items]) => [
       g,
-      items.slice(0, 3).map((i) => ("event" in i ? i.event.event.title : i.task.task.text) + " " + i.date),
+      items
+        .slice(0, 4)
+        .map((i) => ("day" in i ? i.day.title : "event" in i ? i.event.event.title : i.task.task.text) + " " + i.date),
     ]);
     expect(groups).toEqual([
-      ["today", ["Holiday 2026-11-18", "Dentist 2026-11-18", "Pay rent 2026-11-18"]],
+      ["today", ["Ana 2026-11-18", "Holiday 2026-11-18", "Dentist 2026-11-18", "Pay rent 2026-11-18"]],
       ["tomorrow", ["Call mom 2026-11-19"]],
       ["week", ["Gym 2026-11-20"]],
-      ["later", ["Gym 2026-11-27", "Gym 2026-12-04", "Gym 2026-12-11"]],
+      ["later", ["Gym 2026-11-27", "Gym 2026-12-04", "Gym 2026-12-11", "Gym 2026-12-18"]],
     ]);
   });
 

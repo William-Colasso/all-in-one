@@ -4,16 +4,20 @@
   import type { HabitState } from "../habits/types";
   import type { FinanceState } from "../finance/types";
   import type { AgendaDoc, EventRef } from "../agenda/types";
+  import type { DatesDoc, DayEvent, Person } from "../people/types";
   import { t } from "../i18n";
   import { bucketOf } from "../tasks/parse";
   import { isDone, isScheduled } from "../habits/parse";
   import { eventsOf, occurrences } from "../agenda/parse";
+  import { datesOf, reminders } from "../people/parse";
   import { fmtDate, refs } from "./util";
   import { dueSoon } from "./finance";
+  import { whenText } from "./people";
   import BillRow from "./BillRow.svelte";
   import EventRow from "./EventRow.svelte";
   import HabitRow from "./HabitRow.svelte";
   import Icon from "./Icon.svelte";
+  import ReminderRow from "./ReminderRow.svelte";
   import TaskRow from "./TaskRow.svelte";
 
   let {
@@ -22,20 +26,26 @@
     habits,
     finance,
     agenda,
+    people,
+    dates,
     today,
     onedit,
     onhabit,
     onevent,
+    onday,
   }: {
     plugin: AllInOnePlugin;
     doc: Doc;
     habits: HabitState;
     finance: FinanceState;
     agenda: AgendaDoc;
+    people: Person[];
+    dates: DatesDoc;
     today: string;
     onedit: (ref: TaskRef) => void;
     onhabit: (name: string, date: string) => void;
     onevent: (ref: EventRef) => void;
+    onday: (event: DayEvent) => void;
   } = $props();
 
   const events = $derived(occurrences(eventsOf(agenda), today, today));
@@ -45,6 +55,8 @@
   const scheduled = $derived(habits.habits.filter((h) => isScheduled(h, today)));
   const habitsDone = $derived(scheduled.filter((h) => isDone(h, habits.log[today]?.[h.name])).length);
   const bills = $derived(dueSoon(finance, today));
+  // dates re-emits when the lead-time setting changes, so this recomputes then too.
+  const coming = $derived(reminders(people, datesOf(dates), today, plugin.settings.leadDays));
 </script>
 
 <header class="aio-today-head">
@@ -55,6 +67,10 @@
 {#if events.length}
   <h2 class="aio-section">{t("more.agenda")}</h2>
   {#each events as { ref } (ref.index)}<EventRow {ref} onedit={onevent} />{/each}
+{/if}
+{#if coming.length}
+  <h2 class="aio-section">{t("today.comingUp")}</h2>
+  {#each coming as r (`${r.kind}:${r.title}:${r.date}`)}<ReminderRow event={r} when={whenText(r.daysLeft)} onopen={onday} />{/each}
 {/if}
 {#if overdue.length}
   <h2 class="aio-section aio-error">{t("today.overdue")}</h2>
@@ -68,7 +84,7 @@
   <h2 class="aio-section">{t("fin.toSettle")}</h2>
   {#each bills as p (p.bill.name)}<BillRow {plugin} bill={p.bill} due={p.due} {today} />{/each}
 {/if}
-{#if !events.length && !overdue.length && !due.length && !bills.length && habitsDone === scheduled.length}
+{#if !events.length && !coming.some((r) => r.daysLeft === 0) && !overdue.length && !due.length && !bills.length && habitsDone === scheduled.length}
   <div class="aio-empty"><Icon name="sun" size={48} /><p>{t("today.empty")}</p></div>
 {/if}
 {#if scheduled.length}

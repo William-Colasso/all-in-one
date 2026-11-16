@@ -2,31 +2,40 @@
   import type AllInOnePlugin from "../main";
   import type { Doc, TaskRef } from "../types";
   import type { AgendaDoc, AgendaGroup, EventRef } from "../agenda/types";
+  import type { DatesDoc, DayEvent, Person } from "../people/types";
   import { type Key, t } from "../i18n";
   import { bucketOf } from "../tasks/parse";
   import { eventsOf } from "../agenda/parse";
-  import { refs } from "./util";
-  import { agendaGroups, DAYS } from "./agenda";
+  import { datesOf, dayEvents } from "../people/parse";
+  import { addDays, refs } from "./util";
+  import { agendaGroups, DAYS, type Item } from "./agenda";
   import EventRow from "./EventRow.svelte";
   import Icon from "./Icon.svelte";
+  import ReminderRow from "./ReminderRow.svelte";
   import TaskRow from "./TaskRow.svelte";
 
   let {
     plugin,
     agenda,
     doc,
+    people,
+    dates,
     today,
     onedit,
     onedittask,
+    onday,
     oncreate,
     onback,
   }: {
     plugin: AllInOnePlugin;
     agenda: AgendaDoc;
     doc: Doc;
+    people: Person[];
+    dates: DatesDoc;
     today: string;
     onedit: (ref: EventRef) => void;
     onedittask: (ref: TaskRef) => void;
+    onday: (event: DayEvent) => void;
     oncreate: () => void;
     onback: () => void;
   } = $props();
@@ -39,7 +48,20 @@
   };
 
   const overdue = $derived(refs(doc, null, (x) => !x.done && bucketOf(x, today) === "overdue"));
-  const groups = $derived(agendaGroups(eventsOf(agenda), refs(doc, null, (x) => !x.done && !!x.due), today));
+  const groups = $derived(
+    agendaGroups(
+      eventsOf(agenda),
+      refs(doc, null, (x) => !x.done && !!x.due),
+      today,
+      dayEvents(people, datesOf(dates), today, addDays(today, DAYS)),
+    ),
+  );
+  const key = (item: Item) =>
+    "day" in item
+      ? `d:${item.day.kind}:${item.day.title}:${item.date}`
+      : "event" in item
+        ? `${item.date}:${item.event.index}`
+        : `t${item.task.index}`;
 </script>
 
 <header class="aio-agenda-head">
@@ -61,8 +83,10 @@
   {#each groups as [group, items] (group)}
     {@const dated = group === "week" || group === "later"}
     <h2 class="aio-section">{t(HEADS[group])}</h2>
-    {#each items as item ("event" in item ? `${item.date}:${item.event.index}` : `t${item.task.index}`)}
-      {#if "event" in item}
+    {#each items as item (key(item))}
+      {#if "day" in item}
+        <ReminderRow event={item.day} date={dated ? item.date : null} onopen={onday} />
+      {:else if "event" in item}
         <EventRow ref={item.event} date={dated ? item.date : null} {onedit} />
       {:else}
         <TaskRow {plugin} ref={item.task} {today} onedit={onedittask} />

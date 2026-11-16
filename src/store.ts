@@ -18,41 +18,55 @@ export async function processFile(app: App, rawPath: string, fn: (data: string) 
 }
 
 /**
- * Tasks file as a Svelte-compatible store (subscribe contract).
- * The Markdown file is the source of truth: every mutation re-reads it
- * atomically through vault.process, so edits made by hand or by sync are kept.
+ * A single Markdown file as a Svelte-compatible store (subscribe contract).
+ * The file is the source of truth: every mutation re-reads it atomically through
+ * vault.process, so edits made by hand or by sync are kept.
  */
-export class TaskStore {
-  private doc: Doc = [];
-  private subs = new Set<(d: Doc) => void>();
+export class DocStore<T> {
+  private doc: T;
+  private subs = new Set<(d: T) => void>();
 
-  constructor(private app: App, private path: () => string) {}
+  constructor(
+    private app: App,
+    private path: () => string,
+    private parse: (md: string) => T,
+    private serialize: (doc: T) => string,
+  ) {
+    this.doc = parse("");
+  }
 
-  subscribe(fn: (d: Doc) => void): () => void {
+  subscribe(fn: (d: T) => void): () => void {
     fn(this.doc);
     this.subs.add(fn);
     return () => this.subs.delete(fn);
   }
 
-  private set(doc: Doc) {
+  private set(doc: T) {
     this.doc = doc;
     this.subs.forEach((fn) => fn(doc));
   }
 
-  isTasksFile(path: string) {
+  owns(path: string) {
     return path === normalizePath(this.path());
   }
 
   async load() {
     const file = this.app.vault.getFileByPath(normalizePath(this.path()));
-    this.set(file ? parseDoc(await this.app.vault.read(file)) : []);
+    this.set(this.parse(file ? await this.app.vault.read(file) : ""));
   }
 
-  async mutate(fn: (doc: Doc) => Doc) {
+  /** `fn` may throw to abort: nothing is written and the error reaches the caller. */
+  async mutate(fn: (doc: T) => T) {
     await processFile(this.app, this.path(), (data) => {
-      const next = fn(parseDoc(data));
+      const next = fn(this.parse(data));
       this.set(next);
-      return serializeDoc(next);
+      return this.serialize(next);
     });
+  }
+}
+
+export class TaskStore extends DocStore<Doc> {
+  constructor(app: App, path: () => string) {
+    super(app, path, parseDoc, serializeDoc);
   }
 }

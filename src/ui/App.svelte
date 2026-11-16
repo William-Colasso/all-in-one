@@ -3,10 +3,13 @@
   import type { TaskRef } from "../types";
   import type { Habit } from "../habits/types";
   import type { Bill, Category, TxRef } from "../finance/types";
+  import type { EventRef } from "../agenda/types";
   import { type Key, t } from "../i18n";
   import { todayISO } from "../tasks/parse";
+  import Agenda from "./Agenda.svelte";
   import BillForm from "./BillForm.svelte";
   import CategoryForm from "./CategoryForm.svelte";
+  import EventForm from "./EventForm.svelte";
   import FinanceManage from "./FinanceManage.svelte";
   import Finances from "./Finances.svelte";
   import Icon from "./Icon.svelte";
@@ -30,12 +33,8 @@
     { id: "finances", icon: "wallet", key: "tab.finances" },
     { id: "more", icon: "more-horizontal", key: "tab.more" },
   ];
-  const SOON_TYPES: Item[] = [
-    { icon: "calendar", key: "type.appointment" },
-    { icon: "list", key: "type.listItem" },
-  ];
+  const SOON_TYPES: Item[] = [{ icon: "list", key: "type.listItem" }];
   const SOON_MORE: Item[] = [
-    { icon: "calendar", key: "more.agenda" },
     { icon: "users", key: "more.people" },
     { icon: "list", key: "more.lists" },
   ];
@@ -43,7 +42,9 @@
   const tasks = $derived(plugin.tasks);
   const habits = $derived(plugin.habits);
   const finance = $derived(plugin.finance);
+  const agenda = $derived(plugin.agenda);
   let tab = $state<Tab>("today");
+  let agendaOpen = $state(false); // the More tab shows the Agenda screen instead of its list
   let filter = $state<string | null>(null); // list filter of the Tasks tab, also the default list for new tasks there
   let sheet = $state.raw<
     | { kind: "pick" }
@@ -54,6 +55,7 @@
     | { kind: "manage" }
     | { kind: "category"; category: Category | null }
     | { kind: "bill"; bill: Bill | null }
+    | { kind: "event"; ref: EventRef | null }
     | null
   >(null);
 
@@ -69,6 +71,7 @@
   const newHabit = () => (sheet = { kind: "habit", habit: null });
   const editTx = (ref: TxRef | null) => (sheet = { kind: "tx", ref });
   const manage = () => (sheet = { kind: "manage" });
+  const editEvent = (ref: EventRef | null) => (sheet = { kind: "event", ref });
   const close = () => (sheet = null);
   const title = $derived.by(() => {
     switch (sheet?.kind) {
@@ -86,6 +89,8 @@
         return t(sheet.category ? "fin.editCategory" : "fin.newCategory");
       case "bill":
         return t(sheet.bill ? "fin.editBill" : "fin.newBill");
+      case "event":
+        return t(sheet.ref ? "agenda.edit" : "agenda.new");
       default:
         return t("add.title");
     }
@@ -96,15 +101,41 @@
   <div class="aio-page">
     <div class="aio-col">
       {#if tab === "today"}
-        <Today {plugin} doc={$tasks} habits={$habits} finance={$finance} {today} onedit={edit} onhabit={openHabit} />
+        <Today
+          {plugin}
+          doc={$tasks}
+          habits={$habits}
+          finance={$finance}
+          agenda={$agenda}
+          {today}
+          onedit={edit}
+          onhabit={openHabit}
+          onevent={editEvent}
+        />
       {:else if tab === "tasks"}
         <Tasks {plugin} doc={$tasks} {today} onedit={edit} bind:list={filter} />
       {:else if tab === "habits"}
         <Habits {plugin} data={$habits} {today} onopen={openHabit} oncreate={newHabit} />
       {:else if tab === "finances"}
         <Finances {plugin} data={$finance} {today} onedit={editTx} oncreate={() => editTx(null)} onmanage={manage} />
+      {:else if agendaOpen}
+        <Agenda
+          {plugin}
+          agenda={$agenda}
+          doc={$tasks}
+          {today}
+          onedit={editEvent}
+          onedittask={edit}
+          oncreate={() => editEvent(null)}
+          onback={() => (agendaOpen = false)}
+        />
       {:else}
         <ul class="aio-menu">
+          <li>
+            <button class="aio-item" onclick={() => (agendaOpen = true)}>
+              <Icon name="calendar" size={22} /><span class="name">{t("more.agenda")}</span><Icon name="chevron-right" />
+            </button>
+          </li>
           {#each SOON_MORE as item (item.key)}
             <li>
               <button class="aio-item" disabled>
@@ -154,6 +185,11 @@
             <Icon name="wallet" size={22} /><span class="name">{t("type.expense")}</span><Icon name="chevron-right" />
           </button>
         </li>
+        <li>
+          <button class="aio-item" onclick={() => editEvent(null)}>
+            <Icon name="calendar" size={22} /><span class="name">{t("type.appointment")}</span><Icon name="chevron-right" />
+          </button>
+        </li>
         {#each SOON_TYPES as item (item.key)}
           <li>
             <button class="aio-item" disabled>
@@ -191,6 +227,8 @@
       <CategoryForm {plugin} categories={$finance.categories} category={sheet.category} onclose={manage} />
     {:else if sheet.kind === "bill"}
       <BillForm {plugin} data={$finance} bill={sheet.bill} onclose={manage} />
+    {:else if sheet.kind === "event"}
+      <EventForm {plugin} {today} ref={sheet.ref} onclose={close} />
     {:else}
       <TaskForm
         {plugin}

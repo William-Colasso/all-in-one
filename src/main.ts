@@ -1,10 +1,12 @@
-import { ItemView, Plugin, PluginSettingTab, Setting, type WorkspaceLeaf } from "obsidian";
+import { ItemView, normalizePath, Plugin, PluginSettingTab, Setting, type WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import App from "./ui/App.svelte";
 import { isPt, t } from "./i18n";
-import { TaskStore } from "./store";
+import { DocStore, processFile, TaskStore } from "./store";
 import { HabitStore } from "./habits/store";
 import { FinanceStore } from "./finance/store";
+import type { AgendaDoc, AgendaEvent } from "./agenda/types";
+import { googleCalendarUrl, parseAgenda, serializeAgenda, toICS } from "./agenda/parse";
 
 const VIEW_TYPE = "all-in-one-hub";
 
@@ -17,6 +19,7 @@ interface Settings {
   financeFolder: string;
   /** ISO 4217 code used to format amounts. */
   currency: string;
+  agendaFile: string;
 }
 
 class HubView extends ItemView {
@@ -50,6 +53,7 @@ export default class AllInOnePlugin extends Plugin {
   tasks!: TaskStore;
   habits!: HabitStore;
   finance!: FinanceStore;
+  agenda!: DocStore<AgendaDoc>;
 
   async onload() {
     // File names are localized once, on first run, then kept so switching language never orphans data.
@@ -62,6 +66,7 @@ export default class AllInOnePlugin extends Plugin {
         financeFile: `${t("file.finance")}.md`,
         financeFolder: t("file.finance"),
         currency: isPt() ? "BRL" : "USD",
+        agendaFile: `${t("file.agenda")}.md`,
       },
       await this.loadData(),
     );
@@ -79,8 +84,10 @@ export default class AllInOnePlugin extends Plugin {
       () => `${root()}/${this.settings.financeFile}`,
       () => `${root()}/${this.settings.financeFolder}`,
     );
+    this.agenda = new DocStore(this.app, () => `${root()}/${this.settings.agendaFile}`, parseAgenda, serializeAgenda);
     const reload = (path: string) => {
-      if (this.tasks.isTasksFile(path)) void this.tasks.load();
+      if (this.tasks.owns(path)) void this.tasks.load();
+      if (this.agenda.owns(path)) void this.agenda.load();
       if (this.habits.owns(path)) void this.habits.load();
       if (this.finance.owns(path)) void this.finance.load();
     };
@@ -100,7 +107,7 @@ export default class AllInOnePlugin extends Plugin {
   }
 
   loadAll() {
-    return Promise.all([this.tasks.load(), this.habits.load(), this.finance.load()]);
+    return Promise.all([this.tasks.load(), this.habits.load(), this.finance.load(), this.agenda.load()]);
   }
 
   async openHub() {
@@ -108,6 +115,19 @@ export default class AllInOnePlugin extends Plugin {
     const leaf = workspace.getLeavesOfType(VIEW_TYPE)[0] ?? workspace.getLeaf(true);
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await workspace.revealLeaf(leaf);
+  }
+
+  /** Opens Google Calendar's "new event" page prefilled with the event (the Calendar app takes the link on Android). */
+  openInCalendar(event: AgendaEvent) {
+    window.open(googleCalendarUrl(event));
+  }
+
+  /** Writes the event as an .ics file in the root folder, for any calendar app to import. Returns its vault path. */
+  async exportIcs(event: AgendaEvent): Promise<string> {
+    const name = event.title.replace(/[\\/:*?"<>|#^[\]]/g, "").trim() || "event";
+    const path = normalizePath(`${this.settings.rootFolder}/${name}.ics`);
+    await processFile(this.app, path, () => toICS(event));
+    return path;
   }
 
   /** Opens this plugin's settings tab (used by the "More" tab). */

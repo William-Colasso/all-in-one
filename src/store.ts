@@ -1,6 +1,21 @@
-import { type App, normalizePath, type TFile } from "obsidian";
+import { type App, normalizePath } from "obsidian";
 import type { Doc } from "./types";
 import { parseDoc, serializeDoc } from "./tasks/parse";
+
+/** Atomically rewrites a vault file through `fn`, creating the file and its folders if missing. */
+export async function processFile(app: App, rawPath: string, fn: (data: string) => string) {
+  const path = normalizePath(rawPath);
+  let file = app.vault.getFileByPath(path);
+  if (!file) {
+    const parts = path.split("/").slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      const folder = parts.slice(0, i).join("/");
+      if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder);
+    }
+    file = await app.vault.create(path, "");
+  }
+  await app.vault.process(file, fn);
+}
 
 /**
  * Tasks file as a Svelte-compatible store (subscribe contract).
@@ -34,14 +49,7 @@ export class TaskStore {
   }
 
   async mutate(fn: (doc: Doc) => Doc) {
-    const path = normalizePath(this.path());
-    let file: TFile | null = this.app.vault.getFileByPath(path);
-    if (!file) {
-      const folder = path.split("/").slice(0, -1).join("/");
-      if (folder && !this.app.vault.getFolderByPath(folder)) await this.app.vault.createFolder(folder);
-      file = await this.app.vault.create(path, "");
-    }
-    await this.app.vault.process(file, (data) => {
+    await processFile(this.app, this.path(), (data) => {
       const next = fn(parseDoc(data));
       this.set(next);
       return serializeDoc(next);

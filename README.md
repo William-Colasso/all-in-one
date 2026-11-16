@@ -69,7 +69,7 @@ Um hub para a vida cotidiana dentro do Obsidian, pensado primeiro para celular. 
 
 Disponível agora: visualização estilo aplicativo com abas inferiores, botão de captura rápida e Tarefas (datas de vencimento, prioridade, recorrência diária, semanal e mensal, e listas) e Hábitos (sim/não ou com meta, diários, em dias fixos ou N vezes por semana, com sequência, taxa de 30 dias e mapa mensal) e Finanças (despesas e receitas por mês, totais, gastos por categoria com orçamento opcional e contas fixas que ficam "a confirmar") e Agenda (compromissos com horário opcional e repetição, em lista cronológica junto com as tarefas com data; envio para o Google Agenda ou exportação em `.ics`), Pessoas e datas (uma nota por pessoa com aniversário, gostos, tamanhos e presentes; datas comemorativas anuais com lembretes em Hoje) e Listas (compras e desejos). O formato das tarefas é compatível com o plugin Tasks, por exemplo `- [ ] Comprar leite 🔁 every week ⏫ 📅 2026-11-20`.
 
-Próximos passos, ações de IA opcionais (com sua própria chave de API).
+Próximo passo: ações de IA opcionais (com sua própria chave de API).
 
 **Dados:** os arquivos ficam em uma pasta raiz configurável (padrão `Dia a dia`). As tarefas ficam em `Tarefas.md`. Títulos de nível 2 são listas, e linhas que o plugin não entende são mantidas sem alteração.
 

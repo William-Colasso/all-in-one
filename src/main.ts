@@ -7,6 +7,12 @@ import { HabitStore } from "./habits/store";
 import { FinanceStore } from "./finance/store";
 import type { AgendaDoc, AgendaEvent } from "./agenda/types";
 import { googleCalendarUrl, parseAgenda, serializeAgenda, toICS } from "./agenda/parse";
+import { PeopleStore } from "./people/store";
+import type { DatesDoc } from "./people/types";
+import { parseDates, serializeDates } from "./people/parse";
+import { ListStore } from "./lists/store";
+import type { WishDoc } from "./lists/types";
+import { parseWishes, serializeWishes } from "./lists/parse";
 
 const VIEW_TYPE = "all-in-one-hub";
 
@@ -20,6 +26,12 @@ interface Settings {
   /** ISO 4217 code used to format amounts. */
   currency: string;
   agendaFile: string;
+  peopleFolder: string;
+  datesFile: string;
+  listsFolder: string;
+  wishFile: string;
+  /** Default number of days in advance to remind about birthdays and special dates. */
+  leadDays: number;
 }
 
 class HubView extends ItemView {
@@ -54,6 +66,10 @@ export default class AllInOnePlugin extends Plugin {
   habits!: HabitStore;
   finance!: FinanceStore;
   agenda!: DocStore<AgendaDoc>;
+  people!: PeopleStore;
+  dates!: DocStore<DatesDoc>;
+  lists!: ListStore;
+  wishes!: DocStore<WishDoc>;
 
   async onload() {
     // File names are localized once, on first run, then kept so switching language never orphans data.
@@ -67,6 +83,11 @@ export default class AllInOnePlugin extends Plugin {
         financeFolder: t("file.finance"),
         currency: isPt() ? "BRL" : "USD",
         agendaFile: `${t("file.agenda")}.md`,
+        peopleFolder: t("file.people"),
+        datesFile: `${t("file.dates")}.md`,
+        listsFolder: t("file.lists"),
+        wishFile: `${t("file.wishes")}.md`,
+        leadDays: 14,
       },
       await this.loadData(),
     );
@@ -85,12 +106,22 @@ export default class AllInOnePlugin extends Plugin {
       () => `${root()}/${this.settings.financeFolder}`,
     );
     this.agenda = new DocStore(this.app, () => `${root()}/${this.settings.agendaFile}`, parseAgenda, serializeAgenda);
+    this.people = new PeopleStore(this.app, () => `${root()}/${this.settings.peopleFolder}`);
+    this.dates = new DocStore(this.app, () => `${root()}/${this.settings.datesFile}`, parseDates, serializeDates);
+    this.lists = new ListStore(this.app, () => `${root()}/${this.settings.listsFolder}`);
+    this.wishes = new DocStore(this.app, () => `${root()}/${this.settings.wishFile}`, parseWishes, serializeWishes);
     const reload = (path: string) => {
       if (this.tasks.owns(path)) void this.tasks.load();
       if (this.agenda.owns(path)) void this.agenda.load();
       if (this.habits.owns(path)) void this.habits.load();
       if (this.finance.owns(path)) void this.finance.load();
+      if (this.dates.owns(path)) void this.dates.load();
+      if (this.wishes.owns(path)) void this.wishes.load();
+      if (this.lists.owns(path)) void this.lists.load();
+      if (this.people.owns(path)) void this.people.load();
     };
+    // People are read from frontmatter, which the metadata cache parses a moment after the file changes.
+    this.registerEvent(this.app.metadataCache.on("changed", (f) => this.people.owns(f.path) && void this.people.load()));
     this.registerEvent(this.app.vault.on("modify", (f) => reload(f.path)));
     this.registerEvent(this.app.vault.on("delete", (f) => reload(f.path)));
     this.registerEvent(this.app.vault.on("rename", () => void this.loadAll()));
@@ -107,7 +138,16 @@ export default class AllInOnePlugin extends Plugin {
   }
 
   loadAll() {
-    return Promise.all([this.tasks.load(), this.habits.load(), this.finance.load(), this.agenda.load()]);
+    return Promise.all([
+      this.tasks.load(),
+      this.habits.load(),
+      this.finance.load(),
+      this.agenda.load(),
+      this.people.load(),
+      this.dates.load(),
+      this.lists.load(),
+      this.wishes.load(),
+    ]);
   }
 
   async openHub() {
@@ -128,6 +168,12 @@ export default class AllInOnePlugin extends Plugin {
     const path = normalizePath(`${this.settings.rootFolder}/${name}.ics`);
     await processFile(this.app, path, () => toICS(event));
     return path;
+  }
+
+  /** Opens a vault note in a new tab (e.g. a person's note, to write free-form text in its body). */
+  async openNote(path: string) {
+    const file = this.app.vault.getFileByPath(normalizePath(path));
+    if (file) await this.app.workspace.getLeaf(true).openFile(file);
   }
 
   /** Opens this plugin's settings tab (used by the "More" tab). */
@@ -164,6 +210,18 @@ class SettingsTab extends PluginSettingTab {
           this.plugin.settings.currency = code;
           await this.plugin.saveData(this.plugin.settings);
           await this.plugin.finance.load(); // re-emit so open views reformat
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName(t("settings.lead"))
+      .setDesc(t("settings.lead.desc"))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.leadDays)).onChange(async (v) => {
+          const n = Number(v);
+          if (!Number.isInteger(n) || n < 0 || n > 365) return;
+          this.plugin.settings.leadDays = n;
+          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.dates.load(); // re-emit so open views recompute reminders
         }),
       );
   }

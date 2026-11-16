@@ -124,7 +124,7 @@ export default class AllInOnePlugin extends Plugin {
 
   /** Writes the event as an .ics file in the root folder, for any calendar app to import. Returns its vault path. */
   async exportIcs(event: AgendaEvent): Promise<string> {
-    const name = event.title.replace(/[\/:*?"<>|#^[]]/g, "").trim() || "event";
+    const name = event.title.replace(/[\\/:*?"<>|#^[\]]/g, "").trim() || "event";
     const path = normalizePath(`${this.settings.rootFolder}/${name}.ics`);
     await processFile(this.app, path, () => toICS(event));
     return path;

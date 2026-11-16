@@ -4,8 +4,12 @@
   import type { Person } from "../people/types";
   import { t } from "../i18n";
   import { cleanEntry, daysBetween, giftLine, nextOccurrence, removePersonFromDates } from "../people/parse";
+  import { giftPrompt, headingFor, sectionMarkdown } from "../ai/prompts";
+  import type { AiResult } from "../ai/types";
   import { fmtDate } from "./util";
   import { attempt } from "./habits";
+  import { aiLang } from "./ai";
+  import AiCard from "./AiCard.svelte";
   import { splitGift, whenText, without } from "./people";
   import EntryList from "./EntryList.svelte";
   import Icon from "./Icon.svelte";
@@ -14,15 +18,26 @@
     plugin,
     person: initial,
     today,
+    occasion: initialOccasion = "",
     onedit,
     onclose,
-  }: { plugin: AllInOnePlugin; person: Person; today: string; onedit: (person: Person) => void; onclose: () => void } =
-    $props();
+  }: {
+    plugin: AllInOnePlugin;
+    person: Person;
+    today: string;
+    /** Prefills the gift suggestions' occasion when opened from a reminder or a special date. */
+    occasion?: string;
+    onedit: (person: Person) => void;
+    onclose: () => void;
+  } = $props();
+  const uid = $props.id();
 
   // Optimistic: edits show at once; the store refreshes a moment after each save.
   let person = $state.raw(untrack(() => initial));
   let queue: Promise<unknown> = Promise.resolve(); // saves run in order, so the last edit wins
   let confirming = $state(false);
+  let occasion = $state(untrack(() => initialOccasion));
+  let budget = $state("");
 
   const next = $derived(person.birthday ? nextOccurrence(person.birthday, today) : null);
   const turning = $derived(
@@ -48,6 +63,18 @@
     const { date, text } = splitGift(entry);
     return { text, meta: date ? fmtDate(date, { day: "numeric", month: "short", year: "numeric" }) : "" };
   };
+
+  const suggestGifts = (webSearch: boolean) =>
+    plugin.ai.complete(
+      giftPrompt({ person, occasion: occasion.trim() || undefined, budget: budget.trim() || undefined, lang: aiLang(), webSearch, today }),
+    );
+  async function addGifts(result: AiResult) {
+    await queue; // pending frontmatter saves go first
+    await plugin.appendToNote(
+      plugin.people.path(person.name),
+      sectionMarkdown(headingFor(t("people.ideas"), today, aiLang()), result),
+    );
+  }
 
   async function del() {
     if (!confirming) return void (confirming = true);
@@ -102,6 +129,37 @@
     onremove={remove("ideas")}
     ongive={give}
   />
+  {#if plugin.ai.enabled}
+    <h3 class="aio-section">{t("ai.gifts.title")}</h3>
+    <div class="pair">
+      <div class="field">
+        <label class="label" for="{uid}-occasion">{t("ai.occasion")}</label>
+        <input
+          id="{uid}-occasion"
+          type="text"
+          class="aio-input"
+          bind:value={occasion}
+          placeholder={t("fin.optional")}
+          autocomplete="off"
+          enterkeyhint="done"
+        />
+      </div>
+      <div class="field">
+        <label class="label" for="{uid}-budget">{t("ai.budget")}</label>
+        <input
+          id="{uid}-budget"
+          type="text"
+          class="aio-input"
+          bind:value={budget}
+          placeholder={t("fin.optional")}
+          autocomplete="off"
+          enterkeyhint="done"
+        />
+      </div>
+    </div>
+    <AiCard {plugin} label={t("ai.gifts.run")} run={suggestGifts} onadd={addGifts} />
+    <p class="muted small">{t("ai.gifts.sends")}</p>
+  {/if}
   <EntryList
     label={t("people.given")}
     items={given}
@@ -148,6 +206,34 @@
   }
   .muted {
     color: var(--text-muted);
+  }
+  .small {
+    font-size: var(--font-ui-small);
+  }
+  .aio-section {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .pair {
+    display: flex;
+    gap: var(--size-4-2);
+  }
+  .field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-1);
+  }
+  .label {
+    font-size: var(--font-ui-small);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .aio-input {
+    width: 100%;
+    min-height: 44px;
+    font-size: var(--font-ui-medium);
   }
   .more {
     display: flex;

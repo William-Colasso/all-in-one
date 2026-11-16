@@ -8,6 +8,11 @@
   import { attempt } from "./habits";
   import { amountInput } from "./finance";
   import { onWish } from "./lists";
+  import { headingFor, sectionMarkdown, wishPrompt } from "../ai/prompts";
+  import type { AiResult } from "../ai/types";
+  import { todayISO } from "../tasks/parse";
+  import { aiLang } from "./ai";
+  import AiCard from "./AiCard.svelte";
   import Icon from "./Icon.svelte";
 
   let { plugin, ref, onclose }: { plugin: AllInOnePlugin; ref: WishRef | null; onclose: () => void } = $props();
@@ -41,6 +46,16 @@
     busy = false;
     if (ok) onclose();
   }
+
+  // Research works on the saved wish (edit mode only), not on unsaved edits in the fields.
+  const research = (webSearch: boolean) =>
+    plugin.ai.complete(wishPrompt({ wish: init!.wish, currency: plugin.settings.currency, lang: aiLang(), webSearch }));
+  // Quoted, so the wishlist parser never mistakes a line of the answer for a wish.
+  const addResearch = (result: AiResult) =>
+    plugin.appendToNote(
+      plugin.wishPath,
+      sectionMarkdown(headingFor(init!.wish.text, todayISO(), aiLang()), result, { quote: true }),
+    );
 
   async function remove() {
     const r = init!;
@@ -93,6 +108,10 @@
     aria-describedby={badLink ? `${uid}-link-bad` : undefined}
   />
   {#if badLink}<p class="msg error" id="{uid}-link-bad">{t("wish.badLink")}</p>{/if}
+
+  {#if init && plugin.ai.enabled}
+    <AiCard {plugin} label={t("ai.research")} run={research} onadd={addResearch} webHint={t("ai.research.hint")} />
+  {/if}
 
   <div class="actions">
     {#if init}

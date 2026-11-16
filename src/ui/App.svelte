@@ -72,7 +72,7 @@
     | { kind: "category"; category: Category | null }
     | { kind: "bill"; bill: Bill | null }
     | { kind: "event"; ref: EventRef | null }
-    | { kind: "person"; name: string }
+    | { kind: "person"; name: string; occasion?: string }
     | { kind: "personForm"; person: Person | null }
     | { kind: "date"; date: SpecialDate | null }
     | { kind: "wish"; ref: WishRef | null }
@@ -93,14 +93,15 @@
   const editTx = (ref: TxRef | null) => (sheet = { kind: "tx", ref });
   const manage = () => (sheet = { kind: "manage" });
   const editEvent = (ref: EventRef | null) => (sheet = { kind: "event", ref });
-  const openPerson = (name: string) => (sheet = { kind: "person", name });
+  // occasion prefills the person's gift suggestions (from a reminder or a special date).
+  const openPerson = (name: string, occasion?: string) => (sheet = { kind: "person", name, occasion });
   const editPerson = (person: Person | null) => (sheet = { kind: "personForm", person });
   const editDate = (date: SpecialDate | null) => (sheet = { kind: "date", date });
   const editWish = (ref: WishRef | null) => (sheet = { kind: "wish", ref });
   const close = () => (sheet = null);
   // A birthday opens the person; a special date its form.
   function openDay(e: DayEvent) {
-    if (e.kind === "birthday") return openPerson(e.title);
+    if (e.kind === "birthday") return openPerson(e.title, t("people.birthday"));
     const date = datesOf($dates).find((d) => d.name === e.title);
     if (date) editDate(date);
   }
@@ -282,13 +283,13 @@
     {:else if sheet.kind === "event"}
       <EventForm {plugin} {today} ref={sheet.ref} onclose={close} />
     {:else if sheet.kind === "person"}
-      {@const { name } = sheet}
+      {@const { name, occasion } = sheet}
       {@const person = $people.find((p) => p.name === name)}
-      {#if person}<PersonDetail {plugin} {person} {today} onedit={editPerson} onclose={close} />{/if}
+      {#if person}<PersonDetail {plugin} {person} {today} {occasion} onedit={editPerson} onclose={close} />{/if}
     {:else if sheet.kind === "personForm"}
       <PersonForm {plugin} people={$people} person={sheet.person} onclose={close} />
     {:else if sheet.kind === "date"}
-      <DateForm {plugin} people={$people} dates={datesOf($dates)} date={sheet.date} onclose={close} />
+      <DateForm {plugin} people={$people} dates={datesOf($dates)} date={sheet.date} onclose={close} ongift={openPerson} />
     {:else if sheet.kind === "wish"}
       <WishForm {plugin} ref={sheet.ref} onclose={close} />
     {:else if sheet.kind === "listItem"}

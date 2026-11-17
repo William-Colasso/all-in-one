@@ -8,11 +8,12 @@
   import { attempt } from "./habits";
   import { amountInput } from "./finance";
   import { onWish } from "./lists";
-  import { headingFor, sectionMarkdown, wishPrompt } from "../ai/prompts";
+  import { type WishResearch, headingFor, parseWishResearch, sectionMarkdown, wishPrompt } from "../ai/prompts";
   import type { AiResult } from "../ai/types";
   import { todayISO } from "../tasks/parse";
-  import { aiLang } from "./ai";
+  import { aiLang, aiLanguage } from "./ai";
   import AiCard from "./AiCard.svelte";
+  import WishPicks from "./WishPicks.svelte";
   import Icon from "./Icon.svelte";
 
   let { plugin, ref, onclose }: { plugin: AllInOnePlugin; ref: WishRef | null; onclose: () => void } = $props();
@@ -49,7 +50,21 @@
 
   // Research works on the saved wish (edit mode only), not on unsaved edits in the fields.
   const research = (webSearch: boolean) =>
-    plugin.ai.complete(wishPrompt({ wish: init!.wish, currency: plugin.settings.currency, lang: aiLang(), webSearch }));
+    plugin.ai.complete(
+      wishPrompt({
+        wish: init!.wish,
+        currency: plugin.settings.currency,
+        lang: aiLanguage(plugin.app, plugin.wishPath),
+        webSearch,
+      }),
+    );
+  // An offer fills the form; the user still saves it.
+  function useOffer(o: WishResearch["offers"][number]) {
+    if (o.price !== null) price = amountInput(o.price);
+    if (o.link) link = o.link;
+  }
+  const addAlternative = (a: WishResearch["alternatives"][number]) =>
+    attempt(() => plugin.wishes.mutate((d) => addWish(d, { text: cleanText(a.name), done: false, price: a.price, link: "" })));
   // Quoted, so the wishlist parser never mistakes a line of the answer for a wish.
   const addResearch = (result: AiResult) =>
     plugin.appendToNote(
@@ -110,7 +125,18 @@
   {#if badLink}<p class="msg error" id="{uid}-link-bad">{t("wish.badLink")}</p>{/if}
 
   {#if init && plugin.ai.enabled}
-    <AiCard {plugin} label={t("ai.research")} run={research} onadd={addResearch} webHint={t("ai.research.hint")} />
+    <AiCard
+      {plugin}
+      label={t("ai.research")}
+      run={research}
+      onadd={addResearch}
+      parse={parseWishResearch}
+      webHint={t("ai.research.hint")}
+    >
+      {#snippet view(data)}
+        <WishPicks {data} currency={plugin.settings.currency} onuse={useOffer} onalternative={addAlternative} />
+      {/snippet}
+    </AiCard>
   {/if}
 
   <div class="actions">

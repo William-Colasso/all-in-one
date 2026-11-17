@@ -1,8 +1,19 @@
+import { type App, getLanguage } from "obsidian";
 import { AiError, type AiErrorCode } from "../ai/types";
 import { isPt, type Key, t } from "../i18n";
 
-/** Language the prompts should answer in. */
+/** UI language of the headings the plugin writes. */
 export const aiLang = (): "pt" | "en" => (isPt() ? "pt" : "en");
+
+/**
+ * Language the AI answers in: the note's own `lang` / `language` property when it has one,
+ * otherwise Obsidian's language (a code such as "pt-BR", or a name such as "Español").
+ */
+export function aiLanguage(app: App, path?: string): string {
+  const fm = path ? app.metadataCache.getCache(path)?.frontmatter : undefined;
+  const own = fm?.lang ?? fm?.language;
+  return typeof own === "string" && own.trim() ? own.trim() : getLanguage();
+}
 
 const ERRORS: Record<AiErrorCode, Key> = {
   disabled: "ai.err.disabled",

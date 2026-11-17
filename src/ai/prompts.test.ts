@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { categoryPrompt, giftPrompt, headingFor, notePrompt, pickCategory, sectionMarkdown, wishPrompt } from "./prompts";
+import {
+  categoryPrompt,
+  extractJson,
+  giftPrompt,
+  headingFor,
+  languageName,
+  notePrompt,
+  parseGifts,
+  parseWishResearch,
+  pickCategory,
+  sectionMarkdown,
+  wishPrompt,
+} from "./prompts";
 import type { Person } from "../people/types";
 
 const person: Person = {
@@ -12,7 +24,7 @@ const person: Person = {
   given: ["2025-12-25 Headphones"],
 };
 const gift = (over: Partial<Parameters<typeof giftPrompt>[0]> = {}) =>
-  giftPrompt({ person, lang: "en", webSearch: false, today: "2026-11-16", ...over });
+  giftPrompt({ person, currency: "BRL", lang: "en", webSearch: false, today: "2026-11-16", ...over });
 const all = (r: { system: string; prompt: string }) => `${r.system}\n${r.prompt}`;
 
 describe("giftPrompt", () => {
@@ -40,18 +52,23 @@ describe("giftPrompt", () => {
   it("omits age for MM-DD birthdays", () => {
     expect(gift({ person: { ...person, birthday: "03-12" } }).prompt).not.toContain("Age");
   });
-  it("mirrors webSearch and switches the link/price wording", () => {
+  it("asks for JSON and switches the link/price wording with webSearch", () => {
     const on = gift({ webSearch: true });
     const off = gift({ webSearch: false });
     expect(on.webSearch).toBe(true);
     expect(off.webSearch).toBe(false);
-    expect(on.system).toContain("Markdown link");
-    expect(off.system).toContain("Do not include links");
-    expect(off.system).not.toContain("Markdown link");
+    for (const r of [on, off]) {
+      expect(r.system).toContain('{"gifts":[');
+      expect(r.system).toContain("in BRL");
+    }
+    expect(on.system).toContain("URL of that product page");
+    expect(off.system).toContain("always null");
+    expect(off.system).toContain("typical price");
   });
-  it("switches language", () => {
-    expect(gift({ lang: "pt" }).system).toContain("Brazilian Portuguese");
-    expect(gift({ lang: "en" }).system).toContain("Answer in English");
+  it("writes in the given language", () => {
+    expect(gift({ lang: "pt-BR" }).system).toContain("in Brazilian Portuguese");
+    expect(gift({ lang: "en" }).system).toContain("in English");
+    expect(gift({ lang: "Español" }).system).toContain("in Español");
   });
 });
 
@@ -66,11 +83,12 @@ describe("wishPrompt", () => {
     const bare = wishPrompt({ ...base, wish: { text: "Keyboard", done: false, price: null, link: "" }, webSearch: false });
     expect(bare.prompt).not.toContain("Price");
     expect(bare.prompt).not.toContain("Link");
-    expect(bare.system).toContain("Do not mention prices");
+    expect(bare.system).toContain("always []");
+    expect(bare.system).toContain('"alternatives"');
     expect(bare.webSearch).toBe(false);
   });
-  it("switches language", () => {
-    expect(wishPrompt({ ...base, lang: "pt", webSearch: false }).system).toContain("Brazilian Portuguese");
+  it("writes in the given language", () => {
+    expect(wishPrompt({ ...base, lang: "pt-BR", webSearch: false }).system).toContain("in Brazilian Portuguese");
   });
 });
 
@@ -119,7 +137,7 @@ describe("pickCategory", () => {
 describe("notePrompt", () => {
   it("keeps the full content inside the tags", () => {
     const content = "x".repeat(50000) + "\nend";
-    const r = notePrompt({ title: "Trip", content, question: "Summarize?", lang: "pt", webSearch: false });
+    const r = notePrompt({ title: "Trip", content, question: "Summarize?", lang: "pt-BR", webSearch: false });
     expect(r.prompt.startsWith('<note title="Trip">\n')).toBe(true);
     expect(r.prompt).toContain(`${content}\n</note>`);
     expect(r.prompt.endsWith("Summarize?")).toBe(true);
@@ -150,5 +168,75 @@ describe("headingFor", () => {
   it("formats per language", () => {
     expect(headingFor("Gift ideas", "2026-11-16", "en")).toBe("Gift ideas — AI, 2026-11-16");
     expect(headingFor("Ideias de presente", "2026-11-16", "pt")).toBe("Ideias de presente — IA, 2026-11-16");
+  });
+});
+
+describe("languageName", () => {
+  it("names codes and keeps names", () => {
+    expect(languageName("pt-BR")).toBe("Brazilian Portuguese");
+    expect(languageName("es")).toBe("Spanish");
+    expect(languageName(" Português ")).toBe("Português");
+  });
+});
+
+describe("extractJson", () => {
+  it("tolerates fences and text around the object", () => {
+    expect(extractJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(extractJson('Here you go: {"a":{"b":2}} Enjoy!')).toEqual({ a: { b: 2 } });
+  });
+  it("returns null for anything else", () => {
+    expect(extractJson("- **Mug** — nice")).toBeNull();
+    expect(extractJson('{"a":1')).toBeNull();
+    expect(extractJson("[1,2]")).toBeNull();
+  });
+});
+
+describe("parseGifts", () => {
+  it("keeps valid ideas and normalizes fields", () => {
+    const text = JSON.stringify({
+      gifts: [
+        { name: " Trail  shoes ", why: "She hikes.", price: 349.999, link: "https://shop.test/x" },
+        { name: "Mug", why: "", price: "R$ 1.299,90", link: "javascript:alert(1)" },
+        { name: "Book", price: -5, link: null },
+        { name: "", why: "no name" },
+        "junk",
+      ],
+    });
+    expect(parseGifts(text)).toEqual([
+      { name: "Trail shoes", why: "She hikes.", price: 350, link: "https://shop.test/x" },
+      { name: "Mug", why: "", price: 1299.9, link: "" },
+      { name: "Book", why: "", price: null, link: "" },
+    ]);
+  });
+  it("is null for Markdown or an empty list", () => {
+    expect(parseGifts("- **Mug** — she likes coffee")).toBeNull();
+    expect(parseGifts('{"gifts":[]}')).toBeNull();
+  });
+});
+
+describe("parseWishResearch", () => {
+  it("keeps offers with a price or link and named alternatives", () => {
+    const r = parseWishResearch(
+      JSON.stringify({
+        summary: "Look at switches.",
+        offers: [
+          { store: "A", price: 400, link: "https://a.test" },
+          { store: "B", price: null, link: null },
+          { store: "", price: 1 },
+        ],
+        alternatives: [{ name: "Cheaper kb", why: "Fine.", price: "300" }, { why: "nameless" }],
+        check: "Layout.",
+      }),
+    );
+    expect(r).toEqual({
+      summary: "Look at switches.",
+      offers: [{ store: "A", price: 400, link: "https://a.test" }],
+      alternatives: [{ name: "Cheaper kb", why: "Fine.", price: 300 }],
+      check: "Layout.",
+    });
+  });
+  it("is null when nothing usable came back", () => {
+    expect(parseWishResearch("Buy it.")).toBeNull();
+    expect(parseWishResearch('{"offers":[]}')).toBeNull();
   });
 });

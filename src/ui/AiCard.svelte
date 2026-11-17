@@ -1,5 +1,5 @@
-<script lang="ts">
-  import { onDestroy } from "svelte";
+<script lang="ts" generics="T">
+  import { onDestroy, type Snippet } from "svelte";
   import { Component, MarkdownRenderer } from "obsidian";
   import type AllInOnePlugin from "../main";
   import type { AiResult } from "../ai/types";
@@ -10,11 +10,15 @@
 
   // One AI action: run → (thinking) → preview → add to note / discard / try again.
   // Nothing is written until "Add to note"; the rest of the sheet stays usable while it runs.
+  // With `parse` + `view`, an answer in the requested shape shows as `view` (editable, with its
+  // own actions) instead of Markdown; any other answer falls back to Markdown.
   let {
     plugin,
     label,
     run,
     onadd,
+    parse,
+    view,
     disabled = false,
     webHint = "",
   }: {
@@ -23,6 +27,10 @@
     run: (webSearch: boolean) => Promise<AiResult>;
     /** Absent: no "Add to note" button. */
     onadd?: (result: AiResult) => Promise<void>;
+    /** Structured data from the answer's text, or null when it is not in the requested shape. */
+    parse?: (text: string) => T | null;
+    /** Renders the parsed data; calling `done` closes the card as "Added". */
+    view?: Snippet<[T, () => void]>;
     /** e.g. the question is still empty. */
     disabled?: boolean;
     /** Shown under the web-search toggle. */
@@ -32,6 +40,7 @@
 
   let phase = $state<"idle" | "running" | "result" | "error" | "added">("idle");
   let result = $state.raw<AiResult | null>(null);
+  let data = $state.raw<T | null>(null);
   let error = $state("");
   let web = $state(false); // per run: reset whenever the card goes back to idle
   let searching = $state(false);
@@ -52,6 +61,7 @@
     try {
       const r = await run(searching);
       if (!alive) return;
+      data = (view && parse?.(r.text)) ?? null;
       result = r;
       phase = "result";
     } catch (e) {
@@ -63,6 +73,7 @@
 
   function reset() {
     result = null;
+    data = null;
     web = false;
     phase = "idle";
   }
@@ -74,7 +85,11 @@
     const ok = await attempt(() => onadd(r));
     if (!alive) return;
     adding = false;
-    if (!ok) return;
+    if (ok) done();
+  }
+
+  function done() {
+    if (!alive) return;
     reset();
     phase = "added";
     timer = window.setTimeout(() => (phase = "idle"), 1500);
@@ -99,15 +114,19 @@
     <!-- Delegated link clicks; the links themselves are focusable and fire click on Enter. -->
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="card" onclick={openLink}>
-      <div
-        class="md markdown-rendered"
-        {@attach (el) => {
-          const c = new Component();
-          c.load();
-          void MarkdownRenderer.render(plugin.app, text, el, "", c);
-          return () => c.unload();
-        }}
-      ></div>
+      {#if data !== null && view}
+        {@render view(data, done)}
+      {:else}
+        <div
+          class="md markdown-rendered"
+          {@attach (el) => {
+            const c = new Component();
+            c.load();
+            void MarkdownRenderer.render(plugin.app, text, el, "", c);
+            return () => c.unload();
+          }}
+        ></div>
+      {/if}
       {#if sources.length}
         <h4 class="sources-h" id="{uid}-src">{t("ai.sources")}</h4>
         <ul class="sources" aria-labelledby="{uid}-src">
@@ -118,7 +137,7 @@
       {/if}
     </div>
     <div class="buttons">
-      {#if onadd}
+      {#if onadd && data === null}
         <button type="button" class="mod-cta primary" disabled={adding} onclick={add}>
           <Icon name="file-plus" size={18} />{t("ai.add")}
         </button>

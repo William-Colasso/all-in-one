@@ -15,7 +15,7 @@ Available now:
 - Agenda: appointments with optional time and daily/weekly/monthly/yearly repeat, listed chronologically together with dated tasks; send one to Google Calendar or export it as an `.ics` file.
 - People and dates: one note per person (birthday, relation, likes, sizes, gift ideas, gifts given) and yearly special dates linked to people; both show up in the Agenda and as reminders on Today.
 - Lists: shopping lists with quick add and "clear checked", and a wishlist with optional price and link.
-- Optional AI actions (bring your own API key): gift suggestions for a person, research on a wishlist item, a category suggestion for an expense, and a one-off question about the current note. Answers are previewed and only written to a note when you tap "Add to note".
+- Optional AI actions (bring your own API key): gift suggestions for a person, research on a wishlist item, a category suggestion for an expense, and a one-off question about the current note. Answers are previewed and nothing is written until you confirm: gift suggestions come back as an editable checklist (name and price) that you add to the person's gift ideas, and wishlist research lists offers you can apply to the wish and alternatives you can add to the wishlist. Answers are written in the note's `lang` (or `language`) property when it has one, otherwise in Obsidian's language.
 
 ## Data
 

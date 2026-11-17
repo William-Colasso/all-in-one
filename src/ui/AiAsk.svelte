@@ -5,7 +5,7 @@
   import { t } from "../i18n";
   import { headingFor, notePrompt, sectionMarkdown } from "../ai/prompts";
   import { todayISO } from "../tasks/parse";
-  import { aiLang, shorten } from "./ai";
+  import { aiLang, aiLanguage, shorten } from "./ai";
   import AiCard from "./AiCard.svelte";
   import Icon from "./Icon.svelte";
 
@@ -20,7 +20,7 @@
   async function run(webSearch: boolean): Promise<AiResult> {
     asked = question.trim();
     const content = await plugin.app.vault.cachedRead(file);
-    return plugin.ai.complete(notePrompt({ title: file.basename, content, question: asked, lang: aiLang(), webSearch }));
+    return plugin.ai.complete(notePrompt({ title: file.basename, content, question: asked, lang: aiLanguage(plugin.app, file.path), webSearch }));
   }
 
   async function add(result: AiResult) {

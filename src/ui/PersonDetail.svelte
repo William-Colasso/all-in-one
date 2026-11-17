@@ -4,12 +4,14 @@
   import type { Person } from "../people/types";
   import { t } from "../i18n";
   import { cleanEntry, daysBetween, giftLine, nextOccurrence, removePersonFromDates } from "../people/parse";
-  import { giftPrompt, headingFor, sectionMarkdown } from "../ai/prompts";
+  import { type GiftIdea, giftPrompt, headingFor, parseGifts, sectionMarkdown } from "../ai/prompts";
   import type { AiResult } from "../ai/types";
   import { fmtDate } from "./util";
   import { attempt } from "./habits";
-  import { aiLang } from "./ai";
+  import { aiLang, aiLanguage } from "./ai";
+  import { money } from "./finance";
   import AiCard from "./AiCard.svelte";
+  import GiftPicks from "./GiftPicks.svelte";
   import { splitGift, whenText, without } from "./people";
   import EntryList from "./EntryList.svelte";
   import Icon from "./Icon.svelte";
@@ -66,8 +68,23 @@
 
   const suggestGifts = (webSearch: boolean) =>
     plugin.ai.complete(
-      giftPrompt({ person, occasion: occasion.trim() || undefined, budget: budget.trim() || undefined, lang: aiLang(), webSearch, today }),
+      giftPrompt({
+        person,
+        occasion: occasion.trim() || undefined,
+        budget: budget.trim() || undefined,
+        currency: plugin.settings.currency,
+        lang: aiLanguage(plugin.app, plugin.people.path(person.name)),
+        webSearch,
+        today,
+      }),
     );
+  // Picked suggestions become gift ideas, e.g. "Trail shoes — R$ 350,00".
+  function addIdeas(picked: GiftIdea[]) {
+    const fresh = picked
+      .map((g) => cleanEntry(g.price !== null ? `${g.name} — ${money(g.price, plugin.settings.currency)}` : g.name))
+      .filter((s, i, all) => s && !person.ideas.includes(s) && all.indexOf(s) === i);
+    if (fresh.length) update({ ...person, ideas: [...person.ideas, ...fresh] });
+  }
   async function addGifts(result: AiResult) {
     await queue; // pending frontmatter saves go first
     await plugin.appendToNote(
@@ -157,7 +174,11 @@
         />
       </div>
     </div>
-    <AiCard {plugin} label={t("ai.gifts.run")} run={suggestGifts} onadd={addGifts} />
+    <AiCard {plugin} label={t("ai.gifts.run")} run={suggestGifts} onadd={addGifts} parse={parseGifts}>
+      {#snippet view(gifts, done)}
+        <GiftPicks {gifts} currency={plugin.settings.currency} onadd={(picked) => (addIdeas(picked), done())} />
+      {/snippet}
+    </AiCard>
     <p class="muted small">{t("ai.gifts.sends")}</p>
   {/if}
   <EntryList
